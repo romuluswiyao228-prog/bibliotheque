@@ -22,6 +22,10 @@ const SPINE_COLORS = [
    2) ÉTAT GLOBAL ADMIN
    ------------------------------------------------------------------------- */
 let books = loadBooks();
+if (books.length === 0) {
+  seedDemoData();
+  books = loadBooks();
+}
 let supabaseClient = null;
 let editingBookId = null;
 let activeEditorBookId = null;

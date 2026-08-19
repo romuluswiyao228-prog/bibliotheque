@@ -865,6 +865,14 @@ let activeReadingBook = null;
 let activeChapterIndex = 0;
 let readerChapters = [];
 
+// Chargement initial des livres si vide
+if (books.length === 0) {
+  seedDemoData();
+  books = loadBooks();
+} else {
+  upgradeExistingBooksIfNeeded();
+}
+
 /* ---------------------------------------------------------------------
    4) NAVIGATION
    --------------------------------------------------------------------- */
