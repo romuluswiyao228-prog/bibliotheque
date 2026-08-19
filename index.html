@@ -9,12 +9,16 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
 
-  <!-- Bibliothèques pour les exports (bonus) : jsPDF pour le PDF, SheetJS pour Excel -->
+  <!-- Bibliothèques pour les exports : jsPDF pour le PDF, SheetJS pour Excel -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
+  <!-- Supabase SDK -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
   <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="admin.css" />
 </head>
 <body>
 
@@ -27,6 +31,7 @@
   <div class="app">
 
     <!-- ---------- SIDEBAR / NAVIGATION ---------- -->
+    <!-- ---------- SIDEBAR / NAVIGATION ---------- -->
     <aside class="sidebar">
       <div class="brand">
         <span class="brand-mark">§</span>
@@ -36,12 +41,28 @@
         </div>
       </div>
 
+      <!-- Profil utilisateur mini-carte -->
+      <div class="sidebar-profile" id="sidebarProfile">
+        <div class="sidebar-avatar" id="sidebarAvatar">👤</div>
+        <div class="sidebar-profile-info">
+          <strong id="sidebarName">Mon Profil</strong>
+          <span id="sidebarReadCount">0 livres lus</span>
+        </div>
+        <button class="sidebar-profile-edit-btn" data-view="profile" title="Modifier mon profil">✎</button>
+      </div>
+
       <nav class="nav" id="mainNav">
         <button class="nav-btn active" data-view="dashboard">
           <span class="nav-ico">⌂</span> Tableau de bord
         </button>
+        <button class="nav-btn" data-view="personal">
+          <span class="nav-ico">📚</span> Ma Bibliothèque
+        </button>
+        <button class="nav-btn" data-view="profile">
+          <span class="nav-ico">👤</span> Mon Profil
+        </button>
         <button class="nav-btn" data-view="add">
-          <span class="nav-ico">+</span> Ajouter
+          <span class="nav-ico">+</span> Ajouter un livre
         </button>
         <button class="nav-btn" data-view="list">
           <span class="nav-ico">≣</span> Liste des livres
@@ -59,6 +80,13 @@
 
       <div class="sidebar-footer">
         <p>Rangement des collections<br>ligne après ligne.</p>
+        <div class="sidebar-footer-actions">
+          <button class="sidebar-auth-btn" id="authBtn">
+            <span id="authBtnIcon">👤</span>
+            <span id="authBtnLabel">Se connecter</span>
+          </button>
+          <button class="sidebar-admin-btn" id="adminAccessBtn" title="Accès administrateur">⚙️ Admin</button>
+        </div>
       </div>
     </aside>
 
@@ -80,6 +108,17 @@
       <section class="view active" id="view-dashboard">
         <div class="grid-cards" id="dashboardCards"></div>
 
+        <!-- Carte de reprise de lecture si un livre est en cours -->
+        <div class="resume-reading-panel" id="resumeReadingPanel" hidden>
+          <div class="resume-content">
+            <span class="resume-badge">📖 En cours de lecture</span>
+            <h3 id="resumeBookTitle">Titre du livre</h3>
+            <p id="resumeBookMeta">Chapitre 1 · 35% lu</p>
+            <div class="resume-progress"><div id="resumeProgressBar" class="progress-fill"></div></div>
+          </div>
+          <button class="btn btn-primary btn-lg" id="resumeReadingBtn">Reprendre la lecture ➔</button>
+        </div>
+
         <div class="panel">
           <div class="panel-head panel-head-row">
             <h2>Derniers livres ajoutés</h2>
@@ -89,7 +128,7 @@
             <table class="book-table" id="recentTable">
               <thead>
                 <tr>
-                  <th>ID</th><th>Titre</th><th>Auteur</th><th>Catégorie</th><th>Disponibilité</th>
+                  <th>Couverture</th><th>ID</th><th>Titre</th><th>Auteur</th><th>Catégorie</th><th>Disponibilité</th><th>Lecture</th>
                 </tr>
               </thead>
               <tbody></tbody>
@@ -98,12 +137,54 @@
         </div>
       </section>
 
+      <!-- ================= VUE : MA BIBLIOTHÈQUE (ESPACE PERSONNEL) ================= -->
+      <section class="view" id="view-personal">
+        <div class="personal-hero-card">
+          <div class="personal-hero-text">
+            <h2>Ma Bibliothèque Personnelle</h2>
+            <p>Retrouvez tous vos ouvrages, consultez leurs couvertures, suivez votre avancée et plongez dans la lecture.</p>
+          </div>
+          <div class="personal-stats-pills" id="personalStatsPills">
+            <!-- Rempli en JS -->
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head panel-head-row">
+            <div class="filter-pills" id="readingFilterPills">
+              <button class="pill-btn active" data-filter="all">Tous (<span id="count-all">0</span>)</button>
+              <button class="pill-btn" data-filter="reading">📖 En cours (<span id="count-reading">0</span>)</button>
+              <button class="pill-btn" data-filter="finished">✓ Lus (<span id="count-finished">0</span>)</button>
+              <button class="pill-btn" data-filter="unread">○ Non commencés (<span id="count-unread">0</span>)</button>
+              <button class="pill-btn" data-filter="favorites">❤️ Favoris (<span id="count-favorites">0</span>)</button>
+            </div>
+            <div class="toolbar">
+              <input type="search" id="personalSearchInput" placeholder="Rechercher dans ma bibliothèque…" />
+              <select id="personalCategorySelect">
+                <option value="">Toutes les catégories</option>
+              </select>
+              <select id="personalSortSelect">
+                <option value="recent">Récemment lus</option>
+                <option value="alpha">Titre (A-Z)</option>
+                <option value="author">Auteur</option>
+                <option value="progress">Progression</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="personal-books-grid" id="personalBooksGrid">
+            <!-- Rempli en JS -->
+          </div>
+          <p class="empty-state" id="personalEmptyState" hidden>Aucun livre ne correspond à vos filtres.</p>
+        </div>
+      </section>
+
       <!-- ================= VUE : AJOUTER UN LIVRE ================= -->
       <section class="view" id="view-add">
         <div class="panel form-panel">
           <div class="panel-head">
-            <h2>Ajouter un nouveau livre</h2>
-            <p class="muted">Tous les champs sont obligatoires. Les nombres ne peuvent pas être négatifs.</p>
+            <h2 id="formTitle">Ajouter un nouveau livre</h2>
+            <p class="muted">Remplissez les informations du livre, ajoutez une couverture et son texte de lecture.</p>
           </div>
 
           <form id="bookForm" novalidate>
@@ -111,7 +192,7 @@
 
             <div class="form-grid">
               <div class="field">
-                <label for="title">Titre</label>
+                <label for="title">Titre du livre</label>
                 <input type="text" id="title" placeholder="Ex. Le Comte de Monte-Cristo" required />
                 <span class="error" id="err-title"></span>
               </div>
@@ -141,9 +222,29 @@
                 <span class="error" id="err-copies"></span>
               </div>
 
-              <div class="field">
-                <label for="cover">Image de couverture (URL — facultatif)</label>
-                <input type="url" id="cover" placeholder="https://..." />
+              <div class="field cover-field-group">
+                <label for="cover">Photo de couverture</label>
+                <div class="cover-input-tabs">
+                  <input type="url" id="cover" placeholder="URL de l'image (https://...)" />
+                  <span class="or-separator">ou</span>
+                  <label class="btn btn-outline btn-upload" for="coverFile">
+                    📁 Choisir une photo locale
+                    <input type="file" id="coverFile" accept="image/*" style="display:none;" />
+                  </label>
+                </div>
+                <div class="cover-preview-container" id="coverPreviewContainer" hidden>
+                  <img id="coverPreviewImg" src="" alt="Aperçu couverture" />
+                  <div class="cover-preview-info">
+                    <span id="coverPreviewLabel">Photo sélectionnée</span>
+                    <button type="button" class="btn btn-ghost btn-sm" id="removeCoverBtn">✕ Supprimer l'image</button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="field field-full">
+                <label for="bookContent">Texte / Chapitres du livre (pour la liseuse)</label>
+                <textarea id="bookContent" rows="7" placeholder="Collez le texte du livre ou découpez en chapitres en écrivant '--- Chapitre : Titre ---' entre chaque section..."></textarea>
+                <small class="hint">Astuce : Séparez les chapitres avec '---' pour créer un sommaire interactif dans la liseuse.</small>
               </div>
             </div>
 
@@ -166,6 +267,7 @@
                 <option value="">Trier…</option>
                 <option value="alpha">Ordre alphabétique (titre)</option>
                 <option value="category">Par catégorie</option>
+                <option value="year">Par année</option>
               </select>
               <button class="btn btn-outline" id="exportPdfBtn">Export PDF</button>
               <button class="btn btn-outline" id="exportExcelBtn">Export Excel</button>
@@ -176,6 +278,7 @@
               <thead>
                 <tr>
                   <th></th>
+                  <th>Couverture</th>
                   <th>ID</th>
                   <th>Titre</th>
                   <th>Auteur</th>
@@ -216,6 +319,89 @@
         </div>
       </section>
 
+      <!-- ================= VUE : MON PROFIL ================= -->
+      <section class="view" id="view-profile">
+        <!-- Carte héro profil -->
+        <div class="profile-hero">
+          <div class="profile-hero-bg"></div>
+          <div class="profile-hero-content">
+            <div class="profile-avatar-wrap">
+              <div class="profile-avatar" id="profileAvatarDisplay">👤</div>
+              <label class="profile-avatar-change" for="profileAvatarEmoji" title="Changer l'avatar">✎</label>
+            </div>
+            <div class="profile-hero-text">
+              <h2 id="profileNameDisplay">Mon Profil</h2>
+              <p id="profileBioDisplay" class="profile-bio-display">Passionné(e) de lecture</p>
+              <div class="profile-hero-badges" id="profileHeroBadges"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Stats de lecture rapides -->
+        <div class="profile-stats-row" id="profileStatsRow"></div>
+
+        <!-- Formulaire d'édition du profil -->
+        <div class="panel profile-edit-panel">
+          <div class="panel-head">
+            <h2>✎ Modifier mon profil</h2>
+            <p class="muted">Personnalisez votre espace de lecteur.</p>
+          </div>
+          <form id="profileForm" class="profile-form">
+            <div class="profile-form-grid">
+              <div class="field">
+                <label for="profileName">Nom d'affichage</label>
+                <input type="text" id="profileName" placeholder="Ex. Alice Dupont" maxlength="40" />
+              </div>
+              <div class="field">
+                <label for="profileAvatarEmoji">Avatar (emoji)</label>
+                <div class="emoji-picker-row">
+                  <input type="text" id="profileAvatarEmoji" placeholder="Ex. 📖 ou 🦉" maxlength="4" />
+                  <div class="emoji-presets" id="emojiPresets"></div>
+                </div>
+              </div>
+              <div class="field field-full">
+                <label for="profileBio">Biographie / Citation</label>
+                <textarea id="profileBio" rows="3" placeholder="Une courte description, une citation préférée..."></textarea>
+              </div>
+              <div class="field">
+                <label for="profileFavoriteGenre">Genre littéraire préféré</label>
+                <input type="text" id="profileFavoriteGenre" list="profileGenreList" placeholder="Ex. Roman, Science-fiction…" />
+                <datalist id="profileGenreList">
+                  <option value="Roman"><option value="Science-fiction"><option value="Poésie">
+                  <option value="Histoire"><option value="Science"><option value="Informatique">
+                  <option value="Jeunesse"><option value="Développement personnel">
+                </datalist>
+              </div>
+              <div class="field">
+                <label for="profileReadingGoal">Objectif de lecture (livres/an)</label>
+                <input type="number" id="profileReadingGoal" min="1" max="365" placeholder="Ex. 12" />
+              </div>
+            </div>
+            <div class="form-actions">
+              <button type="submit" class="btn btn-primary">💾 Enregistrer le profil</button>
+            </div>
+          </form>
+        </div>
+
+        <!-- Livres récemment lus -->
+        <div class="panel">
+          <div class="panel-head">
+            <h2>📖 Mes lectures récentes</h2>
+          </div>
+          <div class="profile-recent-reads" id="profileRecentReads"></div>
+          <p class="empty-state" id="profileRecentEmpty" hidden>Commencez à lire pour voir votre historique ici !</p>
+        </div>
+
+        <!-- Livres favoris -->
+        <div class="panel">
+          <div class="panel-head">
+            <h2>❤️ Mes favoris</h2>
+          </div>
+          <div class="profile-favorites-grid" id="profileFavoritesGrid"></div>
+          <p class="empty-state" id="profileFavoritesEmpty" hidden>Aucun favori pour le moment. Ajoutez des livres à vos favoris dans Ma Bibliothèque !</p>
+        </div>
+      </section>
+
       <!-- ================= VUE : STATISTIQUES ================= -->
       <section class="view" id="view-stats">
         <div class="grid-cards" id="statsCards"></div>
@@ -228,7 +414,330 @@
         </div>
       </section>
 
+      <!-- ================= VUE : ESPACE ADMIN ================= -->
+      <section class="view" id="view-admin">
+
+        <!-- Bandeau admin -->
+        <div class="admin-hero">
+          <div class="admin-hero-icon">⚙️</div>
+          <div>
+            <h2>Espace Administrateur</h2>
+            <p>Gérez les contenus, les livres et synchronisez avec Supabase.</p>
+          </div>
+          <div class="admin-hero-actions">
+            <button class="btn btn-outline" id="adminSyncBtn">☁️ Synchroniser avec Supabase</button>
+            <button class="btn btn-danger btn-sm" id="adminLogoutBtn">Quitter l'admin</button>
+          </div>
+        </div>
+
+        <!-- Statut Supabase -->
+        <div class="admin-supabase-status" id="adminSupabaseStatus">
+          <div class="status-dot" id="statusDot"></div>
+          <span id="statusLabel">Vérification de la connexion Supabase…</span>
+          <button class="btn btn-outline btn-sm" id="adminConfigBtn">⚙️ Configurer Supabase</button>
+        </div>
+
+        <!-- Config Supabase (masquée par défaut) -->
+        <div class="panel admin-config-panel" id="adminConfigPanel" hidden>
+          <div class="panel-head">
+            <h2>🔧 Configuration Supabase</h2>
+            <p class="muted">Entrez les clés de votre projet Supabase. Trouvez-les dans Project Settings → API.</p>
+          </div>
+          <form id="supabaseConfigForm" class="admin-config-form">
+            <div class="field">
+              <label for="supabaseUrl">URL du projet</label>
+              <input type="url" id="supabaseUrl" placeholder="https://xxxx.supabase.co" />
+            </div>
+            <div class="field">
+              <label for="supabaseKey">Clé publique (anon key)</label>
+              <input type="text" id="supabaseKey" placeholder="eyJhbGc..." />
+            </div>
+            <div class="form-actions">
+              <button type="submit" class="btn btn-primary">💾 Enregistrer et connecter</button>
+              <button type="button" class="btn btn-ghost" id="cancelConfigBtn">Annuler</button>
+            </div>
+          </form>
+        </div>
+
+        <!-- Onglets admin -->
+        <div class="admin-tabs">
+          <button class="admin-tab active" data-tab="content">📝 Contenus des livres</button>
+          <button class="admin-tab" data-tab="books">📚 Gestion des livres</button>
+          <button class="admin-tab" data-tab="users">👥 Utilisateurs</button>
+          <button class="admin-tab" data-tab="import">📥 Import / Export</button>
+        </div>
+
+        <!-- Onglet : Contenus des livres -->
+        <div class="admin-tab-panel active" id="adminTab-content">
+          <div class="panel">
+            <div class="panel-head panel-head-row">
+              <div>
+                <h2>📝 Éditeur de contenus</h2>
+                <p class="muted">Sélectionnez un livre pour éditer ses chapitres et son contenu de lecture.</p>
+              </div>
+              <input type="search" id="adminBookSearch" placeholder="Rechercher un livre…" />
+            </div>
+            <div class="admin-books-list" id="adminBooksList"></div>
+          </div>
+
+          <!-- Éditeur de chapitres (affiché quand un livre est sélectionné) -->
+          <div class="panel admin-editor-panel" id="adminEditorPanel" hidden>
+            <div class="admin-editor-header">
+              <div class="admin-editor-book-info">
+                <div class="admin-editor-cover" id="adminEditorCover"></div>
+                <div>
+                  <h2 id="adminEditorTitle">Titre du livre</h2>
+                  <p id="adminEditorAuthor" class="muted">Auteur</p>
+                </div>
+              </div>
+              <div class="admin-editor-actions">
+                <button class="btn btn-ghost btn-sm" id="adminEditorClose">✕ Fermer</button>
+                <button class="btn btn-success" id="adminSaveContent">💾 Sauvegarder le contenu</button>
+              </div>
+            </div>
+
+            <div class="admin-editor-toolbar">
+              <button class="btn btn-outline btn-sm" id="adminAddChapter">+ Ajouter un chapitre</button>
+              <label class="btn btn-outline btn-sm btn-upload" for="adminImportTxt">
+                📁 Importer un fichier .txt
+                <input type="file" id="adminImportTxt" accept=".txt" style="display:none" />
+              </label>
+              <button class="btn btn-ghost btn-sm" id="adminPreviewContent">👁 Aperçu liseuse</button>
+              <span class="admin-editor-hint">Séparez les chapitres avec <code>--- Chapitre : Titre ---</code></span>
+            </div>
+
+            <div class="admin-chapters-editor" id="adminChaptersEditor">
+              <!-- Chapitres dynamiques -->
+            </div>
+
+            <div class="field" style="margin-top:16px">
+              <label for="adminRawContent">✏️ Éditeur brut (texte complet)</label>
+              <textarea id="adminRawContent" rows="18" placeholder="Collez ici le texte complet du livre, ou utilisez le format chapitre par chapitre.&#10;&#10;Exemple :&#10;--- Chapitre 1 : L'aventure commence ---&#10;Il était une fois..."></textarea>
+              <small class="hint">💡 Format recommandé : <code>--- Chapitre N : Titre ---</code> pour séparer les chapitres</small>
+            </div>
+          </div>
+        </div>
+
+        <!-- Onglet : Gestion des livres -->
+        <div class="admin-tab-panel" id="adminTab-books">
+          <div class="panel">
+            <div class="panel-head panel-head-row">
+              <h2>📚 Tous les livres</h2>
+              <div class="toolbar">
+                <button class="btn btn-primary" id="adminAddBook">+ Nouveau livre</button>
+                <button class="btn btn-outline" id="adminPushBooks">☁️ Pousser vers Supabase</button>
+              </div>
+            </div>
+            <div class="table-wrap">
+              <table class="book-table" id="adminBooksTable">
+                <thead>
+                  <tr>
+                    <th>Couverture</th><th>Titre</th><th>Auteur</th><th>Catégorie</th><th>Contenu</th><th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="adminBooksTableBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- Onglet : Utilisateurs -->
+        <div class="admin-tab-panel" id="adminTab-users">
+          <div class="panel">
+            <div class="panel-head">
+              <h2>👥 Utilisateurs enregistrés</h2>
+              <p class="muted">Utilisateurs connectés via Supabase Auth.</p>
+            </div>
+            <div id="adminUsersList">
+              <p class="empty-state" id="adminUsersEmpty">Connectez Supabase pour voir les utilisateurs.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Onglet : Import / Export -->
+        <div class="admin-tab-panel" id="adminTab-import">
+          <div class="panel">
+            <div class="panel-head">
+              <h2>📥 Import / Export des données</h2>
+            </div>
+            <div class="admin-import-grid">
+              <div class="admin-import-card">
+                <div class="admin-import-icon">📤</div>
+                <h3>Exporter tous les livres</h3>
+                <p>Téléchargez tous les livres (avec contenus) en JSON.</p>
+                <button class="btn btn-primary" id="adminExportJson">Exporter en JSON</button>
+              </div>
+              <div class="admin-import-card">
+                <div class="admin-import-icon">📥</div>
+                <h3>Importer des livres</h3>
+                <p>Importez un fichier JSON de livres.</p>
+                <label class="btn btn-outline btn-upload" for="adminImportJson">
+                  Importer JSON
+                  <input type="file" id="adminImportJson" accept=".json" style="display:none" />
+                </label>
+              </div>
+              <div class="admin-import-card">
+                <div class="admin-import-icon">☁️</div>
+                <h3>Synchroniser avec Supabase</h3>
+                <p>Envoyez tous les livres et contenus vers votre base de données cloud.</p>
+                <button class="btn btn-success" id="adminFullSync">Sync complète</button>
+              </div>
+              <div class="admin-import-card danger">
+                <div class="admin-import-icon">🗑️</div>
+                <h3>Réinitialiser les données</h3>
+                <p>Supprime toutes les données locales. Irréversible !</p>
+                <button class="btn btn-danger" id="adminResetAll">Tout réinitialiser</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </section>
+
     </main>
+  </div>
+
+  <!-- ============ MODAL : CONNEXION ADMIN ============ -->
+  <div class="modal-overlay" id="adminLoginOverlay" hidden>
+    <div class="modal admin-login-modal">
+      <div class="admin-login-icon">🔐</div>
+      <h3>Accès Administrateur</h3>
+      <p>Entrez le mot de passe pour accéder au panneau d'administration.</p>
+      <form id="adminLoginForm">
+        <div class="field">
+          <input type="password" id="adminPasswordInput" placeholder="Mot de passe admin" autofocus />
+          <span class="error" id="adminPasswordError"></span>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-ghost" id="adminLoginCancel">Annuler</button>
+          <button type="submit" class="btn btn-primary">🔓 Accéder</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ============ MODAL : AUTH UTILISATEUR (Supabase) ============ -->
+  <div class="modal-overlay" id="authOverlay" hidden>
+    <div class="modal auth-modal">
+      <button class="modal-close-btn" id="authOverlayClose">✕</button>
+
+      <!-- Onglets Connexion / Inscription -->
+      <div class="auth-tabs">
+        <button class="auth-tab active" data-auth-tab="login">Se connecter</button>
+        <button class="auth-tab" data-auth-tab="signup">Créer un compte</button>
+      </div>
+
+      <!-- Connexion -->
+      <div class="auth-panel active" id="authPanel-login">
+        <div class="auth-icon">📚</div>
+        <h3>Bon retour !</h3>
+        <p class="muted">Connectez-vous pour retrouver vos lectures et favoris sur tous vos appareils.</p>
+        <form id="loginForm">
+          <div class="field">
+            <label for="loginEmail">Email</label>
+            <input type="email" id="loginEmail" placeholder="vous@exemple.fr" required />
+          </div>
+          <div class="field">
+            <label for="loginPassword">Mot de passe</label>
+            <input type="password" id="loginPassword" placeholder="••••••••" required />
+          </div>
+          <span class="error" id="loginError"></span>
+          <button type="submit" class="btn btn-primary btn-full" id="loginSubmitBtn">Se connecter</button>
+        </form>
+      </div>
+
+      <!-- Inscription -->
+      <div class="auth-panel" id="authPanel-signup">
+        <div class="auth-icon">✨</div>
+        <h3>Créer un compte</h3>
+        <p class="muted">Rejoignez la bibliothèque pour sauvegarder vos lectures dans le cloud.</p>
+        <form id="signupForm">
+          <div class="field">
+            <label for="signupName">Nom d'affichage</label>
+            <input type="text" id="signupName" placeholder="Alice Dupont" required />
+          </div>
+          <div class="field">
+            <label for="signupEmail">Email</label>
+            <input type="email" id="signupEmail" placeholder="vous@exemple.fr" required />
+          </div>
+          <div class="field">
+            <label for="signupPassword">Mot de passe</label>
+            <input type="password" id="signupPassword" placeholder="8 caractères minimum" required minlength="8" />
+          </div>
+          <span class="error" id="signupError"></span>
+          <button type="submit" class="btn btn-primary btn-full" id="signupSubmitBtn">Créer mon compte</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ LISEUSE E-READER INTERACTIVE ============ -->
+  <div class="reader-overlay" id="readerOverlay" hidden>
+    <div class="reader-window theme-sepia" id="readerWindow">
+      <header class="reader-header">
+        <div class="reader-header-left">
+          <button class="btn btn-reader-action" id="readerCloseBtn" title="Fermer la liseuse (Échap)">
+            <span class="reader-icon">←</span> Fermer
+          </button>
+          <div class="reader-book-info">
+            <h2 id="readerTitle">Titre du livre</h2>
+            <span id="readerAuthor">Auteur</span>
+          </div>
+        </div>
+
+        <div class="reader-controls">
+          <div class="reader-control-group">
+            <button class="btn btn-reader-icon" id="readerFontDec" title="Diminuer la police">A-</button>
+            <button class="btn btn-reader-icon" id="readerFontInc" title="Agrandir la police">A+</button>
+            <button class="btn btn-reader-icon" id="readerFontFamily" title="Changer de police">Aa</button>
+          </div>
+          <div class="reader-control-group">
+            <button class="btn btn-reader-icon theme-btn active" data-theme="sepia" title="Thème Sépia">📜</button>
+            <button class="btn btn-reader-icon theme-btn" data-theme="light" title="Thème Clair">☀️</button>
+            <button class="btn btn-reader-icon theme-btn" data-theme="dark" title="Thème Sombre">🌙</button>
+          </div>
+          <button class="btn btn-reader-icon" id="readerTocToggle" title="Sommaire des chapitres">📑 Sommaire</button>
+          <button class="btn btn-reader-icon" id="readerFullscreenBtn" title="Plein écran">⛶</button>
+        </div>
+      </header>
+
+      <div class="reader-progress-track">
+        <div class="reader-progress-fill" id="readerProgressBar"></div>
+      </div>
+
+      <div class="reader-main">
+        <!-- Panneau Sommaire -->
+        <aside class="reader-toc-sidebar" id="readerTocSidebar" hidden>
+          <div class="reader-toc-head">
+            <h3>Sommaire</h3>
+            <button class="btn btn-ghost btn-sm" id="readerTocClose">✕</button>
+          </div>
+          <ul class="reader-toc-list" id="readerTocList"></ul>
+        </aside>
+
+        <!-- Zone de texte -->
+        <div class="reader-scroll-area" id="readerScrollArea">
+          <div class="reader-content-wrapper">
+            <div class="reader-chapter-badge" id="readerChapterBadge">Chapitre 1</div>
+            <h1 class="reader-chapter-title" id="readerChapterTitle">Titre du Chapitre</h1>
+            <article class="reader-article font-serif" id="readerArticle"></article>
+
+            <div class="reader-chapter-nav">
+              <button class="btn btn-outline" id="readerPrevChapterBtn">← Chapitre précédent</button>
+              <button class="btn btn-success" id="readerMarkFinishedBtn">✓ Marquer le livre comme lu</button>
+              <button class="btn btn-primary" id="readerNextChapterBtn">Chapitre suivant →</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <footer class="reader-footer">
+        <span id="readerFooterInfo">Chapitre 1 sur 3 · 0% lu</span>
+        <div class="reader-footer-actions">
+          <button class="btn btn-ghost btn-sm" id="readerResetProgressBtn">↺ Réinitialiser ma progression</button>
+        </div>
+      </footer>
+    </div>
   </div>
 
   <!-- ============ MODALE DE CONFIRMATION (suppression) ============ -->
@@ -243,9 +752,10 @@
     </div>
   </div>
 
-  <!-- ============ TOASTS (messages courts, ex : "Livre indisponible") ============ -->
+  <!-- ============ TOASTS (messages courts) ============ -->
   <div class="toast-container" id="toastContainer"></div>
 
   <script src="script.js"></script>
+  <script src="admin.js"></script>
 </body>
 </html>
