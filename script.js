@@ -879,8 +879,7 @@ const VIEW_META = {
   dashboard: { title: "Tableau de bord", subtitle: "Vue d'ensemble de votre bibliothèque" },
   personal:  { title: "Ma Bibliothèque", subtitle: "Votre espace de lecture personnel et vos favoris" },
   profile:   { title: "Mon Profil", subtitle: "Vos statistiques, lectures récentes et favoris" },
-  add:       { title: "Ajouter un livre", subtitle: "Enregistrer un nouvel ouvrage dans la collection" },
-  list:      { title: "Liste des livres", subtitle: "Rechercher, modifier, supprimer ou emprunter" },
+  list:      { title: "Liste des livres", subtitle: "Rechercher, lire et emprunter des ouvrages" },
   borrow:    { title: "Emprunter", subtitle: "Sélectionner un livre disponible" },
   return:    { title: "Retourner", subtitle: "Enregistrer le retour d'un exemplaire" },
   stats:     { title: "Statistiques", subtitle: "Chiffres clés de la collection" },
@@ -1764,10 +1763,8 @@ function renderListView() {
       <td>${availabilityBadge(b)}</td>
       <td>
         <div class="row-actions">
-          <button class="btn btn-primary btn-sm" data-action="read" data-id="${b.id}">Lire</button>
-          <button class="btn btn-outline btn-sm" data-action="edit" data-id="${b.id}">Modifier</button>
-          <button class="btn btn-success btn-sm" data-action="borrow" data-id="${b.id}">Emprunter</button>
-          <button class="btn btn-danger btn-sm" data-action="delete" data-id="${b.id}">Supprimer</button>
+          <button class="btn btn-primary btn-sm" data-action="read" data-id="${b.id}">📖 Lire</button>
+          <button class="btn btn-success btn-sm" data-action="borrow" data-id="${b.id}">↷ Emprunter</button>
         </div>
       </td>
     </tr>

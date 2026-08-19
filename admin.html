@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Portail Administrateur — Bibliothèque</title>
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
+
+  <!-- Bibliothèques pour les exports -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+  <!-- Supabase SDK -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="admin.css" />
+</head>
+<body class="admin-body">
+
+  <!-- ================= ÉCRAN DE VERROUILLAGE / LOGIN ADMIN ================= -->
+  <div class="admin-lock-screen" id="adminLockScreen">
+    <div class="admin-lock-box">
+      <div class="admin-lock-icon">🔐</div>
+      <h1>Portail Administrateur</h1>
+      <p class="muted">Espace réservé à la gestion des collections, contenus et synchronisation.</p>
+
+      <form id="adminLockForm">
+        <div class="field">
+          <label for="adminPasscode">Code d'accès administrateur</label>
+          <input type="password" id="adminPasscode" placeholder="Mot de passe" autofocus required />
+          <span class="error" id="adminPasscodeError"></span>
+        </div>
+
+        <button type="submit" class="btn btn-primary btn-full" id="adminLoginBtn">
+          🔓 Déverrouiller l'espace Admin
+        </button>
+      </form>
+
+      <div class="admin-lock-footer">
+        <a href="index.html" class="btn-link">← Retourner à la bibliothèque publique</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= APPLICATION ADMIN COMPLÈTE ================= -->
+  <div class="app admin-app" id="adminApp" style="display: none;">
+
+    <!-- ---------- SIDEBAR ADMIN ---------- -->
+    <aside class="sidebar admin-sidebar">
+      <div class="brand">
+        <span class="brand-mark admin-mark">⚙</span>
+        <div class="brand-text">
+          <strong>Administration</strong>
+          <small>Gestion des collections</small>
+        </div>
+      </div>
+
+      <div class="admin-badge-card">
+        <span class="admin-badge-dot"></span>
+        <div class="admin-badge-info">
+          <strong>Administrateur</strong>
+          <small id="adminClock">Connecté</small>
+        </div>
+      </div>
+
+      <nav class="nav" id="adminNav">
+        <button class="nav-btn active" data-view="dashboard">
+          <span class="nav-ico">⌂</span> Tableau de bord
+        </button>
+        <button class="nav-btn" data-view="add-book">
+          <span class="nav-ico">➕</span> Ajouter un livre
+        </button>
+        <button class="nav-btn" data-view="content-editor">
+          <span class="nav-ico">📝</span> Contenus & Chapitres
+        </button>
+        <button class="nav-btn" data-view="manage-books">
+          <span class="nav-ico">📚</span> Tous les livres
+        </button>
+        <button class="nav-btn" data-view="users">
+          <span class="nav-ico">👥</span> Utilisateurs Cloud
+        </button>
+        <button class="nav-btn" data-view="database">
+          <span class="nav-ico">☁️</span> Base de données Supabase
+        </button>
+        <button class="nav-btn" data-view="import-export">
+          <span class="nav-ico">📥</span> Import / Export
+        </button>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="sidebar-footer-actions">
+          <a href="index.html" class="btn btn-outline btn-sm" style="text-align: center; text-decoration: none; display: block;">
+            🌐 Voir le site public
+          </a>
+          <button class="btn btn-danger btn-sm" id="adminExitBtn" style="width: 100%;">
+            🔒 Déconnexion Admin
+          </button>
+        </div>
+      </div>
+    </aside>
+
+    <!-- ---------- ZONE PRINCIPALE ADMIN ---------- -->
+    <main class="main admin-main">
+
+      <!-- Bandeau supérieur -->
+      <header class="topbar">
+        <div class="topbar-title">
+          <h1 id="adminViewTitle">Tableau de bord Admin</h1>
+          <p id="adminViewSubtitle">Vue d'ensemble et gestion de la bibliothèque</p>
+        </div>
+        <div class="admin-header-status" id="adminHeaderStatus">
+          <div class="status-dot" id="statusDot"></div>
+          <span id="statusLabel">Supabase : Vérification…</span>
+        </div>
+      </header>
+
+      <!-- ================= VUE 1 : DASHBOARD ADMIN ================= -->
+      <section class="admin-view active" id="view-dashboard">
+        <div class="grid-cards" id="adminDashboardCards">
+          <!-- Rempli en JS -->
+        </div>
+
+        <div class="admin-dashboard-grid">
+          <div class="panel">
+            <div class="panel-head panel-head-row">
+              <h2>📚 Derniers ajouts dans la collection</h2>
+              <button class="btn btn-primary btn-sm" data-nav="add-book">+ Nouveau livre</button>
+            </div>
+            <div class="table-wrap">
+              <table class="book-table">
+                <thead>
+                  <tr>
+                    <th>Couverture</th>
+                    <th>ID</th>
+                    <th>Titre</th>
+                    <th>Auteur</th>
+                    <th>Catégorie</th>
+                    <th>Contenu</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="adminRecentBooksBody"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-head">
+              <h2>⚡ Actions rapides</h2>
+            </div>
+            <div class="admin-quick-actions">
+              <button class="admin-action-card" data-nav="add-book">
+                <span class="action-icon">➕</span>
+                <strong>Ajouter un nouvel ouvrage</strong>
+                <small>Créer un livre avec couverture et texte</small>
+              </button>
+              <button class="admin-action-card" data-nav="content-editor">
+                <span class="action-icon">📝</span>
+                <strong>Éditer les chapitres</strong>
+                <small>Découper et enrichir les textes de lecture</small>
+              </button>
+              <button class="admin-action-card" id="adminQuickSyncBtn">
+                <span class="action-icon">☁️</span>
+                <strong>Synchroniser Supabase</strong>
+                <small>Envoyer les données vers le cloud</small>
+              </button>
+              <button class="admin-action-card" id="adminQuickSeedBtn">
+                <span class="action-icon">📦</span>
+                <strong>Charger les 20 livres de démo</strong>
+                <small>Réinitialiser avec couvertures HD et textes</small>
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= VUE 2 : AJOUTER UN LIVRE (RÉSERVÉ ADMIN) ================= -->
+      <section class="admin-view" id="view-add-book">
+        <div class="panel form-panel">
+          <div class="panel-head">
+            <h2 id="adminFormTitle">➕ Ajouter un nouveau livre</h2>
+            <p class="muted">Seul l'administrateur peut insérer de nouveaux ouvrages dans la bibliothèque.</p>
+          </div>
+
+          <form id="adminBookForm" novalidate>
+            <input type="hidden" id="adminBookId" />
+
+            <div class="form-grid">
+              <div class="field">
+                <label for="bookTitle">Titre du livre *</label>
+                <input type="text" id="bookTitle" placeholder="Ex. Le Comte de Monte-Cristo" required />
+                <span class="error" id="err-bookTitle"></span>
+              </div>
+
+              <div class="field">
+                <label for="bookAuthor">Auteur *</label>
+                <input type="text" id="bookAuthor" placeholder="Ex. Alexandre Dumas" required />
+                <span class="error" id="err-bookAuthor"></span>
+              </div>
+
+              <div class="field">
+                <label for="bookCategory">Catégorie / Genre *</label>
+                <input type="text" id="bookCategory" list="adminCategoryList" placeholder="Ex. Roman, Science, Histoire..." required />
+                <datalist id="adminCategoryList"></datalist>
+                <span class="error" id="err-bookCategory"></span>
+              </div>
+
+              <div class="field">
+                <label for="bookYear">Année de publication *</label>
+                <input type="number" id="bookYear" placeholder="Ex. 1844" required min="0" step="1" />
+                <span class="error" id="err-bookYear"></span>
+              </div>
+
+              <div class="field">
+                <label for="bookCopies">Nombre total d'exemplaires *</label>
+                <input type="number" id="bookCopies" placeholder="Ex. 3" required min="1" step="1" />
+                <span class="error" id="err-bookCopies"></span>
+              </div>
+
+              <div class="field cover-field-group">
+                <label for="bookCover">Photo de couverture (URL ou fichier)</label>
+                <div class="cover-input-tabs">
+                  <input type="url" id="bookCover" placeholder="https://..." />
+                  <span class="or-separator">ou</span>
+                  <label class="btn btn-outline btn-upload" for="bookCoverFile">
+                    📁 Choisir une photo
+                    <input type="file" id="bookCoverFile" accept="image/*" style="display:none;" />
+                  </label>
+                </div>
+                <div class="cover-preview-container" id="adminCoverPreviewContainer" hidden>
+                  <img id="adminCoverPreviewImg" src="" alt="Aperçu couverture" />
+                  <div class="cover-preview-info">
+                    <span>Photo sélectionnée</span>
+                    <button type="button" class="btn btn-ghost btn-sm" id="adminRemoveCoverBtn">✕ Supprimer l'image</button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="field field-full">
+                <div class="field-head-row">
+                  <label for="bookTextContent">📖 Contenu textuel complet / Chapitres</label>
+                  <label class="btn btn-outline btn-sm btn-upload" for="bookTxtFileImport">
+                    📥 Importer un fichier .txt
+                    <input type="file" id="bookTxtFileImport" accept=".txt" style="display:none;" />
+                  </label>
+                </div>
+                <textarea id="bookTextContent" rows="12" placeholder="Collez ici le texte du livre. Séparez les chapitres avec '--- Chapitre : Titre ---' pour générer un sommaire automatique dans la liseuse."></textarea>
+                <small class="hint">💡 Exemple :<br><code>--- Chapitre 1 : Le début ---<br>Texte du premier chapitre...<br><br>--- Chapitre 2 : La suite ---<br>Texte du deuxième chapitre...</code></small>
+              </div>
+            </div>
+
+            <div class="form-actions">
+              <button type="submit" class="btn btn-primary btn-lg" id="adminSubmitBookBtn">💾 Enregistrer le livre</button>
+              <button type="button" class="btn btn-ghost btn-lg" id="adminCancelEditBtn" hidden>Annuler la modification</button>
+            </div>
+          </form>
+        </div>
+      </section>
+
+      <!-- ================= VUE 3 : ÉDITEUR DE CONTENUS & CHAPITRES ================= -->
+      <section class="admin-view" id="view-content-editor">
+        <div class="panel">
+          <div class="panel-head panel-head-row">
+            <div>
+              <h2>📝 Sélectionner un livre pour éditer son texte</h2>
+              <p class="muted">Ajoutez, modifiez ou organisez les chapitres de chaque livre pour la liseuse publique.</p>
+            </div>
+            <input type="search" id="contentSearchInput" placeholder="Rechercher par titre ou auteur…" />
+          </div>
+          <div class="admin-books-list" id="contentBooksList"></div>
+        </div>
+
+        <!-- Panneau de travail éditeur -->
+        <div class="panel admin-editor-panel" id="adminEditorWorkPanel" hidden>
+          <div class="admin-editor-header">
+            <div class="admin-editor-book-info">
+              <div class="admin-editor-cover" id="editorCoverThumb"></div>
+              <div>
+                <h2 id="editorBookTitle">Titre du livre</h2>
+                <p id="editorBookAuthor" class="muted">Auteur</p>
+              </div>
+            </div>
+            <div class="admin-editor-actions">
+              <button class="btn btn-ghost btn-sm" id="editorCloseBtn">✕ Fermer</button>
+              <button class="btn btn-success" id="editorSaveBtn">💾 Enregistrer le texte</button>
+            </div>
+          </div>
+
+          <div class="admin-editor-toolbar">
+            <button class="btn btn-outline btn-sm" id="editorAddChapterBtn">➕ Ajouter un chapitre</button>
+            <label class="btn btn-outline btn-sm btn-upload" for="editorTxtImport">
+              📁 Importer un fichier .txt
+              <input type="file" id="editorTxtImport" accept=".txt" style="display:none;" />
+            </label>
+            <span class="admin-editor-hint">Format de séparation : <code>--- Chapitre : Titre ---</code></span>
+          </div>
+
+          <div class="admin-chapters-editor" id="editorChaptersContainer">
+            <!-- Chapitres dynamiques -->
+          </div>
+
+          <div class="field" style="margin-top: 20px;">
+            <label for="editorRawTextarea">✏️ Éditeur brut (texte intégral)</label>
+            <textarea id="editorRawTextarea" rows="16" placeholder="Collez le texte brut ici..."></textarea>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= VUE 4 : GESTION DE TOUS LES LIVRES ================= -->
+      <section class="admin-view" id="view-manage-books">
+        <div class="panel">
+          <div class="panel-head panel-head-row">
+            <div>
+              <h2>📚 Gestion de la collection</h2>
+              <p class="muted">Modifier les informations, les exemplaires, ou supprimer un livre.</p>
+            </div>
+            <div class="toolbar">
+              <input type="search" id="manageSearchInput" placeholder="Rechercher…" />
+              <button class="btn btn-primary" data-nav="add-book">➕ Ajouter un livre</button>
+              <button class="btn btn-outline" id="managePushSupaBtn">☁️ Pousser vers Supabase</button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="book-table" id="manageBooksTable">
+              <thead>
+                <tr>
+                  <th>Couverture</th>
+                  <th>ID</th>
+                  <th>Titre</th>
+                  <th>Auteur</th>
+                  <th>Catégorie</th>
+                  <th>Année</th>
+                  <th>Stock</th>
+                  <th>Contenu</th>
+                  <th>Actions Admin</th>
+                </tr>
+              </thead>
+              <tbody id="manageBooksTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= VUE 5 : UTILISATEURS SUPABASE ================= -->
+      <section class="admin-view" id="view-users">
+        <div class="panel">
+          <div class="panel-head">
+            <h2>👥 Utilisateurs enregistrés dans le Cloud</h2>
+            <p class="muted">Comptes créés par vos lecteurs sur Supabase Auth.</p>
+          </div>
+          <div id="adminUsersContainer">
+            <p class="empty-state">Connectez Supabase pour afficher les profils enregistrés.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= VUE 6 : CONFIGURATION SUPABASE ================= -->
+      <section class="admin-view" id="view-database">
+        <div class="panel">
+          <div class="panel-head">
+            <h2>☁️ Connexion Base de Données Supabase</h2>
+            <p class="muted">Reliez votre bibliothèque à votre projet cloud Supabase.</p>
+          </div>
+
+          <div class="supabase-status-banner" id="supabaseStatusBanner">
+            <div class="status-indicator">
+              <div class="status-dot" id="supaConfigDot"></div>
+              <strong id="supaConfigStatusText">Non connecté</strong>
+            </div>
+            <p id="supaConfigDetail" class="muted">Entrez vos identifiants ci-dessous pour activer la sauvegarde cloud en temps réel.</p>
+          </div>
+
+          <form id="supaConfigForm" class="supabase-setup-form">
+            <div class="field">
+              <label for="supaUrlInput">URL du projet Supabase (Project URL)</label>
+              <input type="url" id="supaUrlInput" placeholder="https://votre-projet.supabase.co" required />
+              <small class="hint">Trouvez-le dans Supabase → Project Settings → API → Project URL</small>
+            </div>
+
+            <div class="field">
+              <label for="supaKeyInput">Clé publique anonyme (anon key)</label>
+              <input type="text" id="supaKeyInput" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." required />
+              <small class="hint">Trouvez-le dans Supabase → Project Settings → API → Project API keys (anon / public)</small>
+            </div>
+
+            <div class="form-actions">
+              <button type="submit" class="btn btn-primary btn-lg">💾 Enregistrer et tester la connexion</button>
+              <button type="button" class="btn btn-success btn-lg" id="supaSyncNowBtn">🔄 Synchroniser toutes les données</button>
+            </div>
+          </form>
+
+          <div class="sql-instructions-card">
+            <h3>📋 Comment créer vos tables sur Supabase ?</h3>
+            <ol>
+              <li>Rendez-vous sur votre tableau de bord <a href="https://supabase.com/dashboard" target="_blank" rel="noopener">Supabase</a>.</li>
+              <li>Allez dans le menu <strong>SQL Editor</strong> à gauche.</li>
+              <li>Cliquez sur <strong>New query</strong>.</li>
+              <li>Copiez et collez le contenu du fichier <code>supabase_schema.sql</code> généré dans votre projet.</li>
+              <li>Cliquez sur <strong>Run</strong> pour créer les tables automatiquement.</li>
+            </ol>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= VUE 7 : IMPORT / EXPORT ================= -->
+      <section class="admin-view" id="view-import-export">
+        <div class="panel">
+          <div class="panel-head">
+            <h2>📥 Sauvegarde, Importation & Réinitialisation</h2>
+          </div>
+
+          <div class="admin-import-grid">
+            <div class="admin-import-card">
+              <div class="admin-import-icon">📤</div>
+              <h3>Exporter la collection</h3>
+              <p>Téléchargez l'intégralité de vos livres et chapitres dans un fichier JSON portable.</p>
+              <button class="btn btn-primary" id="adminExportJsonBtn">Télécharger JSON</button>
+            </div>
+
+            <div class="admin-import-card">
+              <div class="admin-import-icon">📥</div>
+              <h3>Importer des livres</h3>
+              <p>Chargez un fichier JSON contenant une liste d'ouvrages.</p>
+              <label class="btn btn-outline btn-upload" for="adminImportJsonFile">
+                Sélectionner un fichier JSON
+                <input type="file" id="adminImportJsonFile" accept=".json" style="display:none;" />
+              </label>
+            </div>
+
+            <div class="admin-import-card">
+              <div class="admin-import-icon">📄</div>
+              <h3>Exporter en PDF</h3>
+              <p>Générez un catalogue PDF imprimable de tous vos livres.</p>
+              <button class="btn btn-outline" id="adminExportPdfBtn">Générer PDF</button>
+            </div>
+
+            <div class="admin-import-card">
+              <div class="admin-import-icon">📊</div>
+              <h3>Exporter en Excel</h3>
+              <p>Générez un tableau Excel (.xlsx) complet de l'inventaire.</p>
+              <button class="btn btn-outline" id="adminExportExcelBtn">Générer Excel</button>
+            </div>
+
+            <div class="admin-import-card danger">
+              <div class="admin-import-icon">⚠️</div>
+              <h3>Réinitialiser la base locale</h3>
+              <p>Efface toutes les données en cache local. Vos données sur Supabase restent intactes.</p>
+              <button class="btn btn-danger" id="adminResetLocalBtn">Réinitialiser localement</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- ============ MODALE CONFIRMATION SUPPRESSION ============ -->
+  <div class="modal-overlay" id="adminConfirmOverlay" hidden>
+    <div class="modal">
+      <h3 id="adminConfirmTitle">Confirmer la suppression</h3>
+      <p id="adminConfirmMessage">Voulez-vous vraiment supprimer ce livre ?</p>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" id="adminConfirmCancel">Annuler</button>
+        <button class="btn btn-danger" id="adminConfirmOk">Supprimer</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ TOASTS ============ -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <!-- Script Admin dédié -->
+  <script src="admin.js"></script>
+</body>
+</html>

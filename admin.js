@@ -1,60 +1,727 @@
 /* =========================================================================
-   ADMIN.JS — Espace Admin + Intégration Supabase
-   Bibliothèque — Gestion des contenus, Auth utilisateurs, Sync cloud
-   =========================================================================
-
-   POUR CONNECTER SUPABASE :
-   1. Va sur https://supabase.com → crée un projet gratuit
-   2. Dans Project Settings → API, copie :
-      - Project URL  → colle dans le champ "URL du projet" dans l'admin
-      - anon public  → colle dans "Clé publique"
-   3. Dans SQL Editor, exécute le contenu de "supabase_schema.sql"
+   ADMIN.JS — Script dédié au Portail Administrateur
+   Bibliothèque — Gestion sécurisée des collections, contenus & Supabase
    ========================================================================= */
 
 'use strict';
 
 /* -------------------------------------------------------------------------
-   CONSTANTES ADMIN
+   1) CONSTANTES & STORAGE KEYS
    ------------------------------------------------------------------------- */
-const ADMIN_PASSWORD     = 'admin1234';          // Mot de passe admin
-const ADMIN_SESSION_KEY  = 'biblio_admin_sess';  // sessionStorage
-const SUPABASE_CONFIG_KEY= 'biblio_supa_config'; // localStorage
+const ADMIN_PASSWORD      = "admin1234";
+const ADMIN_SESSION_KEY   = "biblio_admin_sess";
+const STORAGE_KEY         = "biblio_books";
+const COUNTER_KEY         = "biblio_next_id";
+const SUPABASE_CONFIG_KEY = "biblio_supa_config";
+
+const SPINE_COLORS = [
+  "#1F3A34", "#B8874A", "#3E7D51", "#7B4B3A", "#4A5E8C", "#8C4A6B", "#A3762F", "#2A526A"
+];
 
 /* -------------------------------------------------------------------------
-   1) ÉTAT SUPABASE
+   2) ÉTAT GLOBAL ADMIN
    ------------------------------------------------------------------------- */
-let supabaseClient = null;   // Client Supabase (null si non configuré)
-let currentUser    = null;   // Utilisateur connecté
-let editingBookId  = null;   // Livre en cours d'édition dans l'admin
+let books = loadBooks();
+let supabaseClient = null;
+let editingBookId = null;
+let activeEditorBookId = null;
+let pendingDeleteId = null;
 
-/* =========================================================================
-   2) INITIALISATION AU CHARGEMENT
-   ========================================================================= */
-document.addEventListener('DOMContentLoaded', () => {
+/* -------------------------------------------------------------------------
+   3) CHARGEMENT & PERSISTANCE LIVRES
+   ------------------------------------------------------------------------- */
+function loadBooks() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+function saveBooks(list) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+  } catch (e) {
+    showToast("Erreur lors de la sauvegarde locale.", "error");
+  }
+}
+
+function generateId() {
+  try {
+    let next = parseInt(localStorage.getItem(COUNTER_KEY) || "1", 10);
+    const id = "LIV-" + String(next).padStart(4, "0");
+    localStorage.setItem(COUNTER_KEY, String(next + 1));
+    return id;
+  } catch (e) {
+    return "LIV-" + Date.now();
+  }
+}
+
+function colorForCategory(cat) {
+  if (!cat) return SPINE_COLORS[0];
+  let hash = 0;
+  for (let i = 0; i < cat.length; i++) hash = cat.charCodeAt(i) + ((hash << 5) - hash);
+  return SPINE_COLORS[Math.abs(hash) % SPINE_COLORS.length];
+}
+
+/* -------------------------------------------------------------------------
+   4) INITIALISATION & SÉCURITÉ
+   ------------------------------------------------------------------------- */
+document.addEventListener("DOMContentLoaded", () => {
+  checkAdminAuth();
+  initNav();
+  initBookForm();
+  initContentEditor();
+  initManageBooks();
   initSupabase();
-  initAdminView();
-  initAuthModals();
-  initSidebarButtons();
-  updateAuthUI();
+  initImportExport();
 });
 
-/* =========================================================================
-   3) SUPABASE — INIT & CONFIG
-   ========================================================================= */
+function checkAdminAuth() {
+  const isAuth = sessionStorage.getItem(ADMIN_SESSION_KEY) === "true";
+  const lockScreen = document.getElementById("adminLockScreen");
+  const adminApp = document.getElementById("adminApp");
+
+  if (isAuth) {
+    if (lockScreen) lockScreen.style.display = "none";
+    if (adminApp) adminApp.style.display = "grid";
+    renderAllAdminViews();
+  } else {
+    if (lockScreen) lockScreen.style.display = "grid";
+    if (adminApp) adminApp.style.display = "none";
+    setTimeout(() => document.getElementById("adminPasscode")?.focus(), 150);
+  }
+}
+
+// Formulaire de déverrouillage
+document.getElementById("adminLockForm")?.addEventListener("submit", (e) => {
+  e.preventDefault();
+  const input = document.getElementById("adminPasscode");
+  const err = document.getElementById("adminPasscodeError");
+
+  if (input.value === ADMIN_PASSWORD) {
+    sessionStorage.setItem(ADMIN_SESSION_KEY, "true");
+    err.textContent = "";
+    input.value = "";
+    checkAdminAuth();
+    showToast("Bienvenue dans le portail Administrateur ⚙️", "success");
+  } else {
+    err.textContent = "❌ Mot de passe incorrect.";
+    input.select();
+  }
+});
+
+// Bouton déconnexion
+document.getElementById("adminExitBtn")?.addEventListener("click", () => {
+  sessionStorage.removeItem(ADMIN_SESSION_KEY);
+  checkAdminAuth();
+  showToast("Session administrateur fermée.", "info");
+});
+
+/* -------------------------------------------------------------------------
+   5) NAVIGATION ADMIN
+   ------------------------------------------------------------------------- */
+const ADMIN_TITLES = {
+  "dashboard": { title: "Tableau de bord Admin", subtitle: "Vue d'ensemble et gestion de la bibliothèque" },
+  "add-book": { title: "Ajouter un livre", subtitle: "Création d'un nouvel ouvrage (Réservé administrateur)" },
+  "content-editor": { title: "Éditeur de chapitres", subtitle: "Rédiger, découper et enrichir les textes de lecture" },
+  "manage-books": { title: "Gestion des collections", subtitle: "Modifier, mettre à jour ou supprimer des ouvrages" },
+  "users": { title: "Utilisateurs Cloud", subtitle: "Lecteurs inscrits et synchronisés avec Supabase" },
+  "database": { title: "Base de données Supabase", subtitle: "Connexion Cloud et synchronisation temps réel" },
+  "import-export": { title: "Import / Export & Sauvegardes", subtitle: "Exports JSON, PDF, Excel et gestion des données" }
+};
+
+function switchAdminView(viewName) {
+  document.querySelectorAll(".admin-view").forEach(v => v.classList.remove("active"));
+  const target = document.getElementById("view-" + viewName);
+  if (target) target.classList.add("active");
+
+  document.querySelectorAll("#adminNav .nav-btn").forEach(btn => {
+    btn.classList.toggle("active", btn.dataset.view === viewName);
+  });
+
+  if (ADMIN_TITLES[viewName]) {
+    document.getElementById("adminViewTitle").textContent = ADMIN_TITLES[viewName].title;
+    document.getElementById("adminViewSubtitle").textContent = ADMIN_TITLES[viewName].subtitle;
+  }
+
+  if (viewName === "manage-books") renderManageBooksTable();
+  if (viewName === "content-editor") renderContentBooksList();
+  if (viewName === "dashboard") renderDashboardView();
+  if (viewName === "users") loadCloudUsers();
+}
+
+function initNav() {
+  document.getElementById("adminNav")?.addEventListener("click", (e) => {
+    const btn = e.target.closest(".nav-btn");
+    if (!btn) return;
+    switchAdminView(btn.dataset.view);
+  });
+
+  document.addEventListener("click", (e) => {
+    const navEl = e.target.closest("[data-nav]");
+    if (navEl) {
+      switchAdminView(navEl.dataset.nav);
+    }
+  });
+}
+
+/* -------------------------------------------------------------------------
+   6) DASHBOARD ADMIN
+   ------------------------------------------------------------------------- */
+function renderDashboardView() {
+  books = loadBooks();
+  const totalBooks = books.length;
+  const totalCopies = books.reduce((s, b) => s + (parseInt(b.maxCopies, 10) || 1), 0);
+  const withContent = books.filter(b => b.content && b.content.trim()).length;
+  const withoutContent = totalBooks - withContent;
+
+  const cardsContainer = document.getElementById("adminDashboardCards");
+  if (cardsContainer) {
+    cardsContainer.innerHTML = `
+      <div class="stat-card">
+        <div class="stat-icon">📚</div>
+        <div class="stat-label">Total des livres</div>
+        <div class="stat-value">${totalBooks}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon">📦</div>
+        <div class="stat-label">Exemplaires physiques</div>
+        <div class="stat-value">${totalCopies}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon">✅</div>
+        <div class="stat-label">Prêts pour la lecture</div>
+        <div class="stat-value">${withContent}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon">⚠️</div>
+        <div class="stat-label">Sans contenu texte</div>
+        <div class="stat-value">${withoutContent}</div>
+      </div>
+    `;
+  }
+
+  // Derniers ajouts
+  const tbody = document.getElementById("adminRecentBooksBody");
+  if (tbody) {
+    const recents = books.slice(-6).reverse();
+    tbody.innerHTML = recents.length
+      ? recents.map(b => {
+          const hasC = !!(b.content && b.content.trim());
+          const thumb = b.cover
+            ? `<img src="${escapeAttr(b.cover)}" alt="" style="width:34px;height:46px;object-fit:cover;border-radius:3px;" />`
+            : `<div style="width:34px;height:46px;background:${colorForCategory(b.category)};border-radius:3px;display:grid;place-items:center;color:#fff;font-size:11px;font-weight:700;">${escapeHTML(b.title.slice(0,2))}</div>`;
+          return `
+            <tr>
+              <td>${thumb}</td>
+              <td><span class="id-chip">${b.id}</span></td>
+              <td><b>${escapeHTML(b.title)}</b></td>
+              <td>${escapeHTML(b.author)}</td>
+              <td>${escapeHTML(b.category)}</td>
+              <td><span class="admin-content-badge ${hasC ? 'ok' : 'missing'}">${hasC ? '✓ Texte OK' : '⚠ Vide'}</span></td>
+              <td>
+                <button class="btn btn-outline btn-sm" onclick="openContentEditor('${b.id}')">📝 Éditer texte</button>
+              </td>
+            </tr>
+          `;
+        }).join("")
+      : `<tr><td colspan="7" class="empty-state">Aucun livre pour le moment.</td></tr>`;
+  }
+}
+
+/* -------------------------------------------------------------------------
+   7) FORMULAIRE AJOUT / MODIFICATION LIVRE
+   ------------------------------------------------------------------------- */
+function initBookForm() {
+  const form = document.getElementById("adminBookForm");
+  const coverInput = document.getElementById("bookCover");
+  const coverFile = document.getElementById("bookCoverFile");
+  const txtImport = document.getElementById("bookTxtFileImport");
+  const cancelBtn = document.getElementById("adminCancelEditBtn");
+  const removeCoverBtn = document.getElementById("adminRemoveCoverBtn");
+
+  coverInput?.addEventListener("input", () => {
+    updateCoverPreview(coverInput.value.trim());
+  });
+
+  coverFile?.addEventListener("change", (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const img = new Image();
+      img.onload = () => {
+        const maxW = 400, maxH = 600;
+        let w = img.width, h = img.height;
+        if (w > maxW || h > maxH) {
+          const ratio = Math.min(maxW / w, maxH / h);
+          w = Math.round(w * ratio);
+          h = Math.round(h * ratio);
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = w; canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0, w, h);
+        const dataUrl = canvas.toDataURL("image/jpeg", 0.82);
+        coverInput.value = dataUrl;
+        updateCoverPreview(dataUrl);
+      };
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+
+  removeCoverBtn?.addEventListener("click", () => {
+    coverInput.value = "";
+    if (coverFile) coverFile.value = "";
+    updateCoverPreview("");
+  });
+
+  txtImport?.addEventListener("change", (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      document.getElementById("bookTextContent").value = ev.target.result;
+      showToast(`Fichier texte « ${file.name} » chargé !`, "success");
+    };
+    reader.readAsText(file, "UTF-8");
+    e.target.value = "";
+  });
+
+  cancelBtn?.addEventListener("click", resetBookForm);
+
+  form?.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const title = document.getElementById("bookTitle").value.trim();
+    const author = document.getElementById("bookAuthor").value.trim();
+    const category = document.getElementById("bookCategory").value.trim();
+    const year = parseInt(document.getElementById("bookYear").value, 10);
+    const copies = parseInt(document.getElementById("bookCopies").value, 10);
+    const cover = document.getElementById("bookCover").value.trim();
+    const content = document.getElementById("bookTextContent").value.trim();
+
+    if (!title || !author || !category || isNaN(year) || isNaN(copies)) {
+      showToast("Veuillez remplir tous les champs obligatoires.", "error");
+      return;
+    }
+
+    books = loadBooks();
+
+    if (editingBookId) {
+      const book = books.find(b => b.id === editingBookId);
+      if (book) {
+        book.title = title;
+        book.author = author;
+        book.category = category;
+        book.year = year;
+        book.maxCopies = copies;
+        book.copies = Math.min(copies, book.copies || copies);
+        book.cover = cover;
+        book.content = content;
+        saveBooks(books);
+        syncBookToSupabase(book);
+        showToast(`« ${title} » modifié avec succès !`, "success");
+      }
+    } else {
+      const newBook = {
+        id: generateId(),
+        title,
+        author,
+        category,
+        year,
+        maxCopies: copies,
+        copies,
+        cover,
+        content
+      };
+      books.push(newBook);
+      saveBooks(books);
+      syncBookToSupabase(newBook);
+      showToast(`« ${title} » ajouté à la bibliothèque !`, "success");
+    }
+
+    resetBookForm();
+    renderAllAdminViews();
+    switchAdminView("manage-books");
+  });
+}
+
+function updateCoverPreview(src) {
+  const container = document.getElementById("adminCoverPreviewContainer");
+  const img = document.getElementById("adminCoverPreviewImg");
+  if (!container || !img) return;
+
+  if (src && src.trim()) {
+    img.src = src;
+    container.hidden = false;
+  } else {
+    img.src = "";
+    container.hidden = true;
+  }
+}
+
+function editBookInForm(bookId) {
+  books = loadBooks();
+  const book = books.find(b => b.id === bookId);
+  if (!book) return;
+
+  editingBookId = book.id;
+  document.getElementById("adminBookId").value = book.id;
+  document.getElementById("bookTitle").value = book.title;
+  document.getElementById("bookAuthor").value = book.author;
+  document.getElementById("bookCategory").value = book.category;
+  document.getElementById("bookYear").value = book.year;
+  document.getElementById("bookCopies").value = book.maxCopies;
+  document.getElementById("bookCover").value = book.cover || "";
+  document.getElementById("bookTextContent").value = book.content || "";
+
+  updateCoverPreview(book.cover || "");
+
+  document.getElementById("adminFormTitle").textContent = `✏️ Modifier « ${book.title} »`;
+  document.getElementById("adminSubmitBookBtn").textContent = "Enregistrer les modifications";
+  document.getElementById("adminCancelEditBtn").hidden = false;
+
+  switchAdminView("add-book");
+}
+
+function resetBookForm() {
+  editingBookId = null;
+  const form = document.getElementById("adminBookForm");
+  if (form) form.reset();
+  updateCoverPreview("");
+  document.getElementById("adminFormTitle").textContent = "➕ Ajouter un nouveau livre";
+  document.getElementById("adminSubmitBookBtn").textContent = "💾 Enregistrer le livre";
+  document.getElementById("adminCancelEditBtn").hidden = true;
+}
+
+/* -------------------------------------------------------------------------
+   8) GESTION DE TOUS LES LIVRES
+   ------------------------------------------------------------------------- */
+function initManageBooks() {
+  document.getElementById("manageSearchInput")?.addEventListener("input", (e) => {
+    renderManageBooksTable(e.target.value.trim().toLowerCase());
+  });
+
+  document.getElementById("managePushSupaBtn")?.addEventListener("click", pushAllBooksToSupabase);
+
+  document.getElementById("adminQuickSyncBtn")?.addEventListener("click", pushAllBooksToSupabase);
+  document.getElementById("adminQuickSeedBtn")?.addEventListener("click", () => {
+    if (confirm("Charger les 20 livres de démonstration complets avec couvertures et chapitres ?")) {
+      seedDemoData();
+      renderAllAdminViews();
+      showToast("20 livres chargés avec succès !", "success");
+    }
+  });
+}
+
+function renderManageBooksTable(query = "") {
+  books = loadBooks();
+  const tbody = document.getElementById("manageBooksTableBody");
+  if (!tbody) return;
+
+  const filtered = query
+    ? books.filter(b => b.title.toLowerCase().includes(query) || b.author.toLowerCase().includes(query) || b.category.toLowerCase().includes(query))
+    : books;
+
+  if (!filtered.length) {
+    tbody.innerHTML = `<tr><td colspan="9" class="empty-state">Aucun livre ne correspond à votre recherche.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = filtered.map(b => {
+    const hasC = !!(b.content && b.content.trim());
+    const chaptersCount = hasC ? b.content.split(/^---/m).filter(s => s.trim()).length : 0;
+    const thumb = b.cover
+      ? `<img src="${escapeAttr(b.cover)}" alt="" style="width:36px;height:50px;object-fit:cover;border-radius:4px;" />`
+      : `<div style="width:36px;height:50px;background:${colorForCategory(b.category)};border-radius:4px;display:grid;place-items:center;color:#fff;font-size:12px;font-weight:700;">${escapeHTML(b.title.slice(0,2))}</div>`;
+
+    return `
+      <tr>
+        <td>${thumb}</td>
+        <td><span class="id-chip">${b.id}</span></td>
+        <td><b>${escapeHTML(b.title)}</b></td>
+        <td>${escapeHTML(b.author)}</td>
+        <td>${escapeHTML(b.category)}</td>
+        <td>${b.year}</td>
+        <td>${b.copies}/${b.maxCopies}</td>
+        <td>
+          <span class="admin-content-badge ${hasC ? 'ok' : 'missing'}">
+            ${hasC ? `✓ ${chaptersCount} ch.` : '⚠ Aucun texte'}
+          </span>
+        </td>
+        <td>
+          <div class="row-actions">
+            <button class="btn btn-outline btn-sm" onclick="editBookInForm('${b.id}')">✏️ Modifier</button>
+            <button class="btn btn-primary btn-sm" onclick="openContentEditor('${b.id}')">📝 Texte</button>
+            <button class="btn btn-danger btn-sm" onclick="askDeleteBook('${b.id}')">🗑️</button>
+          </div>
+        </td>
+      </tr>
+    `;
+  }).join("");
+}
+
+function askDeleteBook(bookId) {
+  books = loadBooks();
+  const book = books.find(b => b.id === bookId);
+  if (!book) return;
+
+  pendingDeleteId = book.id;
+  const overlay = document.getElementById("adminConfirmOverlay");
+  const msg = document.getElementById("adminConfirmMessage");
+  if (overlay && msg) {
+    msg.textContent = `Voulez-vous vraiment supprimer définitivement « ${book.title} » ?`;
+    overlay.hidden = false;
+  }
+}
+
+document.getElementById("adminConfirmCancel")?.addEventListener("click", () => {
+  pendingDeleteId = null;
+  document.getElementById("adminConfirmOverlay").hidden = true;
+});
+
+document.getElementById("adminConfirmOk")?.addEventListener("click", () => {
+  if (pendingDeleteId) {
+    books = loadBooks().filter(b => b.id !== pendingDeleteId);
+    saveBooks(books);
+    if (supabaseClient) {
+      supabaseClient.from("books").delete().eq("biblio_id", pendingDeleteId).then(() => {});
+    }
+    showToast("Livre supprimé de la collection.", "success");
+    renderAllAdminViews();
+  }
+  pendingDeleteId = null;
+  document.getElementById("adminConfirmOverlay").hidden = true;
+});
+
+/* -------------------------------------------------------------------------
+   9) ÉDITEUR DE CONTENUS & CHAPITRES
+   ------------------------------------------------------------------------- */
+function initContentEditor() {
+  document.getElementById("contentSearchInput")?.addEventListener("input", (e) => {
+    renderContentBooksList(e.target.value.trim().toLowerCase());
+  });
+
+  document.getElementById("editorCloseBtn")?.addEventListener("click", () => {
+    document.getElementById("adminEditorWorkPanel").hidden = true;
+    activeEditorBookId = null;
+  });
+
+  document.getElementById("editorAddChapterBtn")?.addEventListener("click", () => {
+    const container = document.getElementById("editorChaptersContainer");
+    const idx = container.querySelectorAll(".admin-chapter-block").length;
+    const block = document.createElement("div");
+    block.className = "admin-chapter-block";
+    block.dataset.idx = idx;
+    block.innerHTML = `
+      <div class="admin-chapter-block-head">
+        <span class="admin-chapter-num">Ch.${idx + 1}</span>
+        <input class="admin-chapter-title-input" value="Chapitre ${idx + 1}" placeholder="Titre du chapitre" />
+        <button class="admin-chapter-del" title="Supprimer">✕</button>
+      </div>
+      <div class="admin-chapter-body">
+        <textarea rows="6" placeholder="Rédigez ou collez le texte du chapitre ici..."></textarea>
+      </div>
+    `;
+    container.appendChild(block);
+    block.querySelector(".admin-chapter-title-input").focus();
+    block.querySelector(".admin-chapter-del").addEventListener("click", () => {
+      block.remove();
+      syncBlocksToRaw();
+    });
+    block.querySelectorAll("input, textarea").forEach(el => el.addEventListener("input", syncBlocksToRaw));
+    block.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  });
+
+  document.getElementById("editorTxtImport")?.addEventListener("change", (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const text = ev.target.result;
+      document.getElementById("editorRawTextarea").value = text;
+      parseRawToBlocks(text);
+      showToast(`Fichier « ${file.name} » importé avec succès !`, "success");
+    };
+    reader.readAsText(file, "UTF-8");
+    e.target.value = "";
+  });
+
+  document.getElementById("editorSaveBtn")?.addEventListener("click", () => {
+    if (!activeEditorBookId) return;
+    const raw = document.getElementById("editorRawTextarea").value.trim();
+    books = loadBooks();
+    const book = books.find(b => b.id === activeEditorBookId);
+    if (!book) return;
+
+    book.content = raw;
+    saveBooks(books);
+    syncBookToSupabase(book);
+
+    showToast(`Contenu de « ${book.title} » sauvegardé !`, "success");
+    document.getElementById("adminEditorWorkPanel").hidden = true;
+    activeEditorBookId = null;
+    renderAllAdminViews();
+  });
+
+  document.getElementById("editorRawTextarea")?.addEventListener("input", (e) => {
+    parseRawToBlocks(e.target.value);
+  });
+}
+
+function renderContentBooksList(query = "") {
+  books = loadBooks();
+  const container = document.getElementById("contentBooksList");
+  if (!container) return;
+
+  const filtered = query
+    ? books.filter(b => b.title.toLowerCase().includes(query) || b.author.toLowerCase().includes(query))
+    : books;
+
+  if (!filtered.length) {
+    container.innerHTML = `<p class="empty-state">Aucun livre trouvé.</p>`;
+    return;
+  }
+
+  container.innerHTML = filtered.map(b => {
+    const hasC = !!(b.content && b.content.trim());
+    const chapters = hasC ? b.content.split(/^---/m).filter(s => s.trim()).length : 0;
+    const thumb = b.cover
+      ? `<div class="admin-book-thumb"><img src="${escapeAttr(b.cover)}" alt="" /></div>`
+      : `<div class="admin-book-thumb" style="background:${colorForCategory(b.category)}">${escapeHTML(b.title.slice(0,2))}</div>`;
+
+    return `
+      <div class="admin-book-item ${hasC ? 'has-content' : 'no-content'}" onclick="openContentEditor('${b.id}')">
+        ${thumb}
+        <div class="admin-book-info">
+          <h4>${escapeHTML(b.title)}</h4>
+          <span>${escapeHTML(b.author)}</span>
+        </div>
+        <span class="admin-content-badge ${hasC ? 'ok' : 'missing'}">
+          ${hasC ? `✓ ${chapters} ch.` : '⚠ Vide'}
+        </span>
+      </div>
+    `;
+  }).join("");
+}
+
+function openContentEditor(bookId) {
+  books = loadBooks();
+  const book = books.find(b => b.id === bookId);
+  if (!book) return;
+
+  activeEditorBookId = book.id;
+
+  document.getElementById("editorBookTitle").textContent = book.title;
+  document.getElementById("editorBookAuthor").textContent = `${book.author} (${book.year})`;
+  const coverEl = document.getElementById("editorCoverThumb");
+  if (coverEl) {
+    coverEl.innerHTML = book.cover
+      ? `<img src="${escapeAttr(book.cover)}" alt="" />`
+      : `📖`;
+  }
+
+  const rawText = book.content || "";
+  document.getElementById("editorRawTextarea").value = rawText;
+  parseRawToBlocks(rawText);
+
+  document.getElementById("adminEditorWorkPanel").hidden = false;
+  switchAdminView("content-editor");
+  document.getElementById("adminEditorWorkPanel").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function parseRawToBlocks(rawText) {
+  const container = document.getElementById("editorChaptersContainer");
+  if (!container) return;
+
+  const sections = rawText.split(/^---/m).map(s => s.trim()).filter(Boolean);
+
+  if (!sections.length) {
+    container.innerHTML = `<p class="muted" style="padding:10px;">Aucun chapitre détecté. Utilisez le bouton ci-dessus pour en ajouter.</p>`;
+    return;
+  }
+
+  container.innerHTML = sections.map((sec, idx) => {
+    const lines = sec.split("\n");
+    let title = `Chapitre ${idx + 1}`;
+    let body = sec;
+    const firstLine = lines[0].replace(/^---|---$/g, "").trim();
+    if (firstLine.length < 90) {
+      title = firstLine;
+      body = lines.slice(1).join("\n").trim();
+    }
+    return `
+      <div class="admin-chapter-block" data-idx="${idx}">
+        <div class="admin-chapter-block-head">
+          <span class="admin-chapter-num">Ch.${idx + 1}</span>
+          <input class="admin-chapter-title-input" value="${escapeAttr(title)}" placeholder="Titre du chapitre" />
+          <button class="admin-chapter-del" title="Supprimer">✕</button>
+        </div>
+        <div class="admin-chapter-body">
+          <textarea rows="6" placeholder="Texte du chapitre...">${escapeHTML(body)}</textarea>
+        </div>
+      </div>
+    `;
+  }).join("");
+
+  container.querySelectorAll(".admin-chapter-del").forEach(btn => {
+    btn.addEventListener("click", () => {
+      btn.closest(".admin-chapter-block").remove();
+      syncBlocksToRaw();
+    });
+  });
+
+  container.querySelectorAll("input, textarea").forEach(el => {
+    el.addEventListener("input", syncBlocksToRaw);
+  });
+}
+
+function syncBlocksToRaw() {
+  const blocks = document.querySelectorAll("#editorChaptersContainer .admin-chapter-block");
+  if (!blocks.length) return;
+
+  const raw = Array.from(blocks).map((b, i) => {
+    b.querySelector(".admin-chapter-num").textContent = `Ch.${i + 1}`;
+    const t = b.querySelector(".admin-chapter-title-input").value.trim() || `Chapitre ${i + 1}`;
+    const c = b.querySelector("textarea").value.trim();
+    return `--- ${t} ---\n${c}`;
+  }).join("\n\n");
+
+  document.getElementById("editorRawTextarea").value = raw;
+}
+
+/* -------------------------------------------------------------------------
+   10) SUPABASE INTEGRATION
+   ------------------------------------------------------------------------- */
 function initSupabase() {
   const cfg = loadSupabaseConfig();
   if (cfg.url && cfg.key) {
+    document.getElementById("supaUrlInput").value = cfg.url;
+    document.getElementById("supaKeyInput").value = cfg.key;
     connectSupabase(cfg.url, cfg.key);
-  } else {
-    setSupabaseStatus('unconfigured', 'Supabase non configuré — cliquez sur ⚙️ pour configurer');
   }
+
+  document.getElementById("supaConfigForm")?.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const url = document.getElementById("supaUrlInput").value.trim();
+    const key = document.getElementById("supaKeyInput").value.trim();
+    saveSupabaseConfig(url, key);
+    connectSupabase(url, key);
+  });
+
+  document.getElementById("supaSyncNowBtn")?.addEventListener("click", pushAllBooksToSupabase);
 }
 
 function loadSupabaseConfig() {
   try {
     const raw = localStorage.getItem(SUPABASE_CONFIG_KEY);
-    return raw ? JSON.parse(raw) : { url: '', key: '' };
-  } catch(e) { return { url: '', key: '' }; }
+    return raw ? JSON.parse(raw) : { url: "", key: "" };
+  } catch (e) {
+    return { url: "", key: "" };
+  }
 }
 
 function saveSupabaseConfig(url, key) {
@@ -63,808 +730,96 @@ function saveSupabaseConfig(url, key) {
 
 function connectSupabase(url, key) {
   try {
-    const { createClient } = window.supabase;
-    supabaseClient = createClient(url, key);
+    if (!window.supabase) return;
+    supabaseClient = window.supabase.createClient(url, key);
 
-    // Vérification de connexion
-    supabaseClient.from('books').select('count', { count: 'exact', head: true })
+    supabaseClient.from("books").select("count", { count: "exact", head: true })
       .then(({ error }) => {
         if (error) {
-          setSupabaseStatus('error', `Erreur : ${error.message}`);
+          setSupaStatusUI(false, `Erreur : ${error.message}`);
         } else {
-          setSupabaseStatus('connected', 'Supabase connecté ✓ — Base de données en ligne');
-          loadCurrentUser();
+          setSupaStatusUI(true, "Connecté à Supabase ✓");
+          loadCloudUsers();
         }
       })
-      .catch(() => {
-        setSupabaseStatus('error', 'Impossible de joindre Supabase — vérifiez vos clés');
+      .catch(err => {
+        setSupaStatusUI(false, "Impossible de joindre Supabase");
       });
-
-    setSupabaseStatus('connecting', 'Connexion à Supabase…');
-  } catch(e) {
-    setSupabaseStatus('error', `Erreur SDK : ${e.message}`);
+  } catch (err) {
+    setSupaStatusUI(false, `Erreur: ${err.message}`);
   }
 }
 
-function setSupabaseStatus(state, label) {
-  const dot = document.getElementById('statusDot');
-  const lbl = document.getElementById('statusLabel');
-  if (!dot || !lbl) return;
-  dot.className = 'status-dot';
-  if (state === 'connected')    dot.classList.add('connected');
-  if (state === 'error')        dot.classList.add('error');
-  lbl.textContent = label;
+function setSupaStatusUI(connected, label) {
+  const headerStatus = document.getElementById("statusLabel");
+  const headerDot = document.getElementById("statusDot");
+  const configText = document.getElementById("supaConfigStatusText");
+  const configDot = document.getElementById("supaConfigDot");
+
+  if (headerStatus) headerStatus.textContent = label;
+  if (headerDot) headerDot.className = "status-dot " + (connected ? "connected" : "error");
+  if (configText) configText.textContent = label;
+  if (configDot) configDot.className = "status-dot " + (connected ? "connected" : "error");
 }
 
-/* =========================================================================
-   4) AUTHENTIFICATION UTILISATEURS (Supabase Auth)
-   ========================================================================= */
-async function loadCurrentUser() {
+async function syncBookToSupabase(book) {
   if (!supabaseClient) return;
-  const { data: { session } } = await supabaseClient.auth.getSession();
-  if (session?.user) {
-    currentUser = session.user;
-    updateAuthUI();
-    syncUserDataFromCloud();
-  }
-
-  // Écoute les changements d'auth
-  supabaseClient.auth.onAuthStateChange((_event, session) => {
-    currentUser = session?.user || null;
-    updateAuthUI();
-    if (currentUser) syncUserDataFromCloud();
-  });
+  await supabaseClient.from("books").upsert({
+    biblio_id: book.id,
+    title: book.title,
+    author: book.author,
+    category: book.category,
+    year: book.year,
+    max_copies: book.maxCopies,
+    copies: book.copies,
+    cover_url: book.cover,
+    content: book.content
+  }, { onConflict: "biblio_id" });
 }
 
-function updateAuthUI() {
-  const authBtn  = document.getElementById('authBtn');
-  const authIcon = document.getElementById('authBtnIcon');
-  const authLbl  = document.getElementById('authBtnLabel');
-  if (!authBtn) return;
-
-  if (currentUser) {
-    const profile = loadProfile ? loadProfile() : {};
-    authIcon.textContent = profile.avatar || '👤';
-    authLbl.textContent  = profile.name || currentUser.email?.split('@')[0] || 'Connecté';
-    authBtn.classList.add('logged-in');
-    authBtn.title = 'Cliquer pour se déconnecter';
-    authBtn.dataset.action = 'logout';
-  } else {
-    authIcon.textContent = '👤';
-    authLbl.textContent  = 'Se connecter';
-    authBtn.classList.remove('logged-in');
-    authBtn.title = 'Se connecter / Créer un compte';
-    authBtn.dataset.action = 'login';
-  }
-}
-
-/* =========================================================================
-   5) MODALS AUTH — CONNEXION / INSCRIPTION
-   ========================================================================= */
-function initAuthModals() {
-  const authOverlay   = document.getElementById('authOverlay');
-  const closeBtn      = document.getElementById('authOverlayClose');
-  const tabs          = document.querySelectorAll('.auth-tab');
-  const loginForm     = document.getElementById('loginForm');
-  const signupForm    = document.getElementById('signupForm');
-
-  // Fermeture
-  closeBtn?.addEventListener('click', () => { authOverlay.hidden = true; });
-  authOverlay?.addEventListener('click', (e) => {
-    if (e.target === authOverlay) authOverlay.hidden = true;
-  });
-
-  // Onglets
-  tabs.forEach(tab => {
-    tab.addEventListener('click', () => {
-      tabs.forEach(t => t.classList.remove('active'));
-      tab.classList.add('active');
-      const target = tab.dataset.authTab;
-      document.querySelectorAll('.auth-panel').forEach(p => p.classList.remove('active'));
-      document.getElementById(`authPanel-${target}`)?.classList.add('active');
-    });
-  });
-
-  // Formulaire connexion
-  loginForm?.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const email    = document.getElementById('loginEmail').value.trim();
-    const password = document.getElementById('loginPassword').value;
-    const errEl    = document.getElementById('loginError');
-    const btn      = document.getElementById('loginSubmitBtn');
-
-    if (!supabaseClient) {
-      errEl.textContent = '⚠️ Supabase non configuré. Configurez-le dans l\'espace Admin d\'abord.';
-      return;
-    }
-
-    btn.textContent = 'Connexion…';
-    btn.disabled = true;
-
-    const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
-    btn.disabled = false;
-    btn.textContent = 'Se connecter';
-
-    if (error) {
-      errEl.textContent = '❌ ' + (error.message === 'Invalid login credentials'
-        ? 'Email ou mot de passe incorrect.'
-        : error.message);
-    } else {
-      currentUser = data.user;
-      authOverlay.hidden = true;
-      updateAuthUI();
-      syncUserDataFromCloud();
-      if (typeof showToast === 'function') showToast('Connexion réussie ! Bienvenue 👋', 'success');
-      errEl.textContent = '';
-    }
-  });
-
-  // Formulaire inscription
-  signupForm?.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const name     = document.getElementById('signupName').value.trim();
-    const email    = document.getElementById('signupEmail').value.trim();
-    const password = document.getElementById('signupPassword').value;
-    const errEl    = document.getElementById('signupError');
-    const btn      = document.getElementById('signupSubmitBtn');
-
-    if (!supabaseClient) {
-      errEl.textContent = '⚠️ Supabase non configuré.';
-      return;
-    }
-
-    btn.textContent = 'Création…';
-    btn.disabled = true;
-
-    const { data, error } = await supabaseClient.auth.signUp({ email, password });
-    btn.disabled = false;
-    btn.textContent = 'Créer mon compte';
-
-    if (error) {
-      errEl.textContent = '❌ ' + error.message;
-    } else {
-      currentUser = data.user;
-      // Créer le profil en base
-      if (currentUser) {
-        await supabaseClient.from('user_profiles').upsert({
-          id: currentUser.id,
-          display_name: name,
-          avatar_emoji: '📚',
-          reading_goal: 12
-        });
-      }
-      authOverlay.hidden = true;
-      updateAuthUI();
-      if (typeof showToast === 'function')
-        showToast(`Compte créé ! Bienvenue ${name} ✨`, 'success');
-      errEl.textContent = '';
-    }
-  });
-}
-
-/* =========================================================================
-   6) BOUTONS SIDEBAR (Auth + Admin)
-   ========================================================================= */
-function initSidebarButtons() {
-  // Bouton Se connecter / Déconnexion
-  document.getElementById('authBtn')?.addEventListener('click', async () => {
-    if (currentUser) {
-      // Déconnexion
-      if (supabaseClient) await supabaseClient.auth.signOut();
-      currentUser = null;
-      updateAuthUI();
-      if (typeof showToast === 'function') showToast('Vous êtes déconnecté.', 'info');
-    } else {
-      document.getElementById('authOverlay').hidden = false;
-    }
-  });
-
-  // Bouton Admin
-  document.getElementById('adminAccessBtn')?.addEventListener('click', () => {
-    if (sessionStorage.getItem(ADMIN_SESSION_KEY) === 'true') {
-      if (typeof switchView === 'function') switchView('admin');
-    } else {
-      document.getElementById('adminLoginOverlay').hidden = false;
-      setTimeout(() => document.getElementById('adminPasswordInput')?.focus(), 100);
-    }
-  });
-
-  // Clic sur sidebar profile → aller sur profil
-  document.getElementById('sidebarProfile')?.addEventListener('click', (e) => {
-    if (e.target.closest('.sidebar-profile-edit-btn')) {
-      if (typeof switchView === 'function') switchView('profile');
-    }
-  });
-}
-
-/* =========================================================================
-   7) MODAL CONNEXION ADMIN
-   ========================================================================= */
-function initAdminView() {
-  const overlay   = document.getElementById('adminLoginOverlay');
-  const form      = document.getElementById('adminLoginForm');
-  const cancelBtn = document.getElementById('adminLoginCancel');
-
-  // Annuler
-  cancelBtn?.addEventListener('click', () => { overlay.hidden = true; });
-  overlay?.addEventListener('click', (e) => {
-    if (e.target === overlay) overlay.hidden = true;
-  });
-
-  // Vérification mot de passe
-  form?.addEventListener('submit', (e) => {
-    e.preventDefault();
-    const pwd     = document.getElementById('adminPasswordInput').value;
-    const errEl   = document.getElementById('adminPasswordError');
-    if (pwd === ADMIN_PASSWORD) {
-      sessionStorage.setItem(ADMIN_SESSION_KEY, 'true');
-      overlay.hidden = true;
-      document.getElementById('adminPasswordInput').value = '';
-      errEl.textContent = '';
-      if (typeof switchView === 'function') switchView('admin');
-      renderAdminView();
-      if (typeof showToast === 'function') showToast('Accès admin accordé ✓', 'success');
-    } else {
-      errEl.textContent = '❌ Mot de passe incorrect.';
-      document.getElementById('adminPasswordInput').select();
-    }
-  });
-
-  // Bouton Quitter admin
-  document.getElementById('adminLogoutBtn')?.addEventListener('click', () => {
-    sessionStorage.removeItem(ADMIN_SESSION_KEY);
-    if (typeof switchView === 'function') switchView('dashboard');
-    if (typeof showToast === 'function') showToast('Session admin terminée.', 'info');
-  });
-
-  // Onglets admin
-  document.querySelectorAll('.admin-tab').forEach(tab => {
-    tab.addEventListener('click', () => {
-      document.querySelectorAll('.admin-tab').forEach(t => t.classList.remove('active'));
-      tab.classList.add('active');
-      const target = tab.dataset.tab;
-      document.querySelectorAll('.admin-tab-panel').forEach(p => p.classList.remove('active'));
-      document.getElementById(`adminTab-${target}`)?.classList.add('active');
-      if (target === 'books') renderAdminBooksTable();
-      if (target === 'users') loadAdminUsers();
-    });
-  });
-
-  // Config Supabase
-  document.getElementById('adminConfigBtn')?.addEventListener('click', () => {
-    const panel = document.getElementById('adminConfigPanel');
-    panel.hidden = !panel.hidden;
-    if (!panel.hidden) {
-      const cfg = loadSupabaseConfig();
-      document.getElementById('supabaseUrl').value = cfg.url || '';
-      document.getElementById('supabaseKey').value = cfg.key || '';
-    }
-  });
-  document.getElementById('cancelConfigBtn')?.addEventListener('click', () => {
-    document.getElementById('adminConfigPanel').hidden = true;
-  });
-
-  document.getElementById('supabaseConfigForm')?.addEventListener('submit', (e) => {
-    e.preventDefault();
-    const url = document.getElementById('supabaseUrl').value.trim();
-    const key = document.getElementById('supabaseKey').value.trim();
-    if (!url || !key) { alert('Remplissez les deux champs.'); return; }
-    saveSupabaseConfig(url, key);
-    connectSupabase(url, key);
-    document.getElementById('adminConfigPanel').hidden = true;
-    if (typeof showToast === 'function') showToast('Configuration Supabase enregistrée !', 'success');
-  });
-
-  // Sync global
-  document.getElementById('adminSyncBtn')?.addEventListener('click', () => syncAllToSupabase());
-  document.getElementById('adminFullSync')?.addEventListener('click', () => syncAllToSupabase());
-
-  // Pousser livres
-  document.getElementById('adminPushBooks')?.addEventListener('click', () => pushBooksToSupabase());
-
-  // Export JSON
-  document.getElementById('adminExportJson')?.addEventListener('click', exportBooksJson);
-
-  // Import JSON
-  document.getElementById('adminImportJson')?.addEventListener('change', importBooksJson);
-
-  // Reset
-  document.getElementById('adminResetAll')?.addEventListener('click', () => {
-    if (confirm('⚠️ ATTENTION : Cette action supprime TOUTES les données locales (livres, progression, favoris, profil). Irréversible. Confirmer ?')) {
-      ['biblio_books','biblio_next_id','biblio_reading_progress','biblio_favorites','biblio_reader_settings','biblio_user_profile']
-        .forEach(k => localStorage.removeItem(k));
-      location.reload();
-    }
-  });
-
-  // Ajouter un livre → redirige vers formulaire
-  document.getElementById('adminAddBook')?.addEventListener('click', () => {
-    if (typeof switchView === 'function') switchView('add');
-  });
-
-  // Search livres dans éditeur
-  document.getElementById('adminBookSearch')?.addEventListener('input', (e) => {
-    renderAdminBooksList(e.target.value.trim().toLowerCase());
-  });
-
-  // Éditeur de contenu
-  initContentEditor();
-}
-
-/* =========================================================================
-   8) RENDU VUE ADMIN
-   ========================================================================= */
-function renderAdminView() {
-  renderAdminBooksList('');
-  renderAdminBooksTable();
-  const cfg = loadSupabaseConfig();
-  document.getElementById('supabaseUrl').value = cfg.url || '';
-  document.getElementById('supabaseKey').value = cfg.key || '';
-}
-
-/* =========================================================================
-   9) ÉDITEUR DE CONTENU
-   ========================================================================= */
-
-// Liste des livres pour l'éditeur
-function renderAdminBooksList(query = '') {
-  const container = document.getElementById('adminBooksList');
-  if (!container) return;
-
-  // books vient de script.js (variable globale)
-  const bookList = typeof books !== 'undefined' ? books : [];
-  const filtered = query
-    ? bookList.filter(b => b.title.toLowerCase().includes(query) || b.author.toLowerCase().includes(query))
-    : bookList;
-
-  if (!filtered.length) {
-    container.innerHTML = '<p class="empty-state">Aucun livre trouvé.</p>';
-    return;
-  }
-
-  container.innerHTML = filtered.map(b => {
-    const hasContent = !!(b.content && b.content.trim());
-    const thumbHTML = b.cover
-      ? `<div class="admin-book-thumb"><img src="${b.cover}" alt="" loading="lazy" onerror="this.style.display='none'" /></div>`
-      : `<div class="admin-book-thumb" style="background:${typeof colorForCategory === 'function' ? colorForCategory(b.category) : '#1F3A34'}">${b.title.slice(0,2)}</div>`;
-
-    return `
-      <div class="admin-book-item ${hasContent ? 'has-content' : 'no-content'}" data-id="${b.id}">
-        ${thumbHTML}
-        <div class="admin-book-info">
-          <h4>${escapeHTMLAdmin(b.title)}</h4>
-          <span>${escapeHTMLAdmin(b.author)}</span>
-        </div>
-        <span class="admin-content-badge ${hasContent ? 'ok' : 'missing'}">
-          ${hasContent ? '✓ OK' : '⚠ Vide'}
-        </span>
-      </div>
-    `;
-  }).join('');
-
-  // Clic → ouvrir éditeur
-  container.querySelectorAll('.admin-book-item').forEach(item => {
-    item.addEventListener('click', () => openContentEditor(item.dataset.id));
-  });
-}
-
-// Table admin tous les livres
-function renderAdminBooksTable() {
-  const tbody = document.getElementById('adminBooksTableBody');
-  if (!tbody) return;
-  const bookList = typeof books !== 'undefined' ? books : [];
-
-  tbody.innerHTML = bookList.map(b => {
-    const hasContent = !!(b.content && b.content.trim());
-    const chapters   = hasContent ? b.content.split(/^---/m).filter(s => s.trim()).length : 0;
-    const thumbHTML  = b.cover
-      ? `<img src="${b.cover}" alt="" style="width:36px;height:50px;object-fit:cover;border-radius:3px;" loading="lazy" />`
-      : `<div style="width:36px;height:50px;background:${typeof colorForCategory === 'function' ? colorForCategory(b.category) : '#1F3A34'};border-radius:3px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:700;">${b.title.slice(0,2)}</div>`;
-
-    return `
-      <tr>
-        <td>${thumbHTML}</td>
-        <td><b>${escapeHTMLAdmin(b.title)}</b></td>
-        <td>${escapeHTMLAdmin(b.author)}</td>
-        <td>${escapeHTMLAdmin(b.category)}</td>
-        <td>
-          <span class="admin-content-indicator ${hasContent ? 'ok' : 'none'}">
-            ${hasContent ? `✓ ${chapters} chapitre(s)` : '⚠ Aucun contenu'}
-          </span>
-        </td>
-        <td>
-          <div class="row-actions">
-            <button class="btn btn-primary btn-sm" onclick="openContentEditor('${b.id}'); document.querySelector('.admin-tab[data-tab=content]').click()">✏️ Éditer</button>
-            <button class="btn btn-outline btn-sm" onclick="if(typeof enterEditMode==='function') { enterEditMode(${JSON.stringify({id: b.id})}); if(typeof switchView==='function') switchView('add'); }">Modifier</button>
-          </div>
-        </td>
-      </tr>
-    `;
-  }).join('');
-}
-
-/* =========================================================================
-   10) ÉDITEUR DE CHAPITRES
-   ========================================================================= */
-function openContentEditor(bookId) {
-  const bookList = typeof books !== 'undefined' ? books : [];
-  const book = bookList.find(b => b.id === bookId);
-  if (!book) return;
-
-  editingBookId = bookId;
-
-  // Affichage infos livre
-  document.getElementById('adminEditorTitle').textContent  = book.title;
-  document.getElementById('adminEditorAuthor').textContent = book.author + ' · ' + book.year;
-  const coverEl = document.getElementById('adminEditorCover');
-  coverEl.innerHTML = book.cover
-    ? `<img src="${book.cover}" alt="" style="width:100%;height:100%;object-fit:cover;" />`
-    : '📚';
-
-  // Contenu brut
-  document.getElementById('adminRawContent').value = book.content || '';
-
-  // Chapitres parsés
-  renderChapterBlocks(book.content || '');
-
-  // Afficher le panneau
-  document.getElementById('adminEditorPanel').hidden = false;
-  document.getElementById('adminEditorPanel').scrollIntoView({ behavior: 'smooth', block: 'start' });
-}
-
-function renderChapterBlocks(rawContent) {
-  const container = document.getElementById('adminChaptersEditor');
-  const sections  = rawContent.split(/^---/m);
-  const chapters  = sections
-    .map(sec => {
-      const trimmed = sec.trim();
-      if (!trimmed) return null;
-      const lines     = trimmed.split('\n');
-      const firstLine = lines[0].replace(/^---|---$/g, '').trim();
-      const body      = lines.slice(1).join('\n').trim();
-      const isTitle   = firstLine.length < 100;
-      return { title: isTitle ? firstLine : 'Chapitre', body: isTitle ? body : trimmed };
-    })
-    .filter(Boolean);
-
-  if (!chapters.length) {
-    container.innerHTML = '<p class="muted" style="padding:12px;">Aucun chapitre détecté. Utilisez l\'éditeur brut ci-dessous ou ajoutez des chapitres.</p>';
-    return;
-  }
-
-  container.innerHTML = chapters.map((ch, idx) => `
-    <div class="admin-chapter-block" data-idx="${idx}">
-      <div class="admin-chapter-block-head">
-        <span class="admin-chapter-drag">⠿</span>
-        <span class="admin-chapter-num">Ch.${idx + 1}</span>
-        <input class="admin-chapter-title-input" value="${escapeAttrAdmin(ch.title)}" placeholder="Titre du chapitre" />
-        <button class="admin-chapter-del" title="Supprimer ce chapitre" data-idx="${idx}">✕</button>
-      </div>
-      <div class="admin-chapter-body">
-        <textarea rows="6" placeholder="Contenu du chapitre…">${escapeHTMLAdmin(ch.body)}</textarea>
-      </div>
-    </div>
-  `).join('');
-
-  // Synchro texte brut → chapitres visuels
-  container.querySelectorAll('.admin-chapter-block').forEach(() => {
-    syncChaptersToRaw();
-  });
-
-  // Supprimer chapitre
-  container.querySelectorAll('.admin-chapter-del').forEach(btn => {
-    btn.addEventListener('click', () => {
-      btn.closest('.admin-chapter-block').remove();
-      renumberChapters();
-      syncChaptersToRaw();
-    });
-  });
-
-  // Mise à jour temps réel
-  container.querySelectorAll('input, textarea').forEach(el => {
-    el.addEventListener('input', syncChaptersToRaw);
-  });
-}
-
-function renumberChapters() {
-  document.querySelectorAll('.admin-chapter-block').forEach((block, idx) => {
-    block.querySelector('.admin-chapter-num').textContent = `Ch.${idx + 1}`;
-    block.dataset.idx = idx;
-  });
-}
-
-function syncChaptersToRaw() {
-  const blocks = document.querySelectorAll('.admin-chapter-block');
-  if (!blocks.length) return;
-  const raw = Array.from(blocks).map(block => {
-    const title   = block.querySelector('.admin-chapter-title-input').value.trim() || 'Chapitre';
-    const content = block.querySelector('textarea').value.trim();
-    return `--- ${title} ---\n${content}`;
-  }).join('\n\n');
-  document.getElementById('adminRawContent').value = raw;
-}
-
-function initContentEditor() {
-  // Ajouter un chapitre
-  document.getElementById('adminAddChapter')?.addEventListener('click', () => {
-    const container = document.getElementById('adminChaptersEditor');
-    const existingCount = container.querySelectorAll('.admin-chapter-block').length;
-    const newIdx = existingCount;
-    const newBlock = document.createElement('div');
-    newBlock.className = 'admin-chapter-block';
-    newBlock.dataset.idx = newIdx;
-    newBlock.innerHTML = `
-      <div class="admin-chapter-block-head">
-        <span class="admin-chapter-drag">⠿</span>
-        <span class="admin-chapter-num">Ch.${newIdx + 1}</span>
-        <input class="admin-chapter-title-input" value="Chapitre ${newIdx + 1}" placeholder="Titre du chapitre" />
-        <button class="admin-chapter-del" title="Supprimer ce chapitre">✕</button>
-      </div>
-      <div class="admin-chapter-body">
-        <textarea rows="6" placeholder="Contenu du chapitre…"></textarea>
-      </div>
-    `;
-    container.appendChild(newBlock);
-    newBlock.querySelector('.admin-chapter-title-input').focus();
-    newBlock.querySelector('.admin-chapter-del').addEventListener('click', () => {
-      newBlock.remove(); renumberChapters(); syncChaptersToRaw();
-    });
-    newBlock.querySelectorAll('input, textarea').forEach(el => {
-      el.addEventListener('input', syncChaptersToRaw);
-    });
-    newBlock.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-  });
-
-  // Import .txt
-  document.getElementById('adminImportTxt')?.addEventListener('change', (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      const text = ev.target.result;
-      document.getElementById('adminRawContent').value = text;
-      renderChapterBlocks(text);
-      if (typeof showToast === 'function') showToast(`Fichier "${file.name}" importé !`, 'success');
-    };
-    reader.readAsText(file, 'UTF-8');
-    e.target.value = '';
-  });
-
-  // Aperçu liseuse
-  document.getElementById('adminPreviewContent')?.addEventListener('click', () => {
-    if (!editingBookId) return;
-    const raw = document.getElementById('adminRawContent').value;
-    const bookList = typeof books !== 'undefined' ? books : [];
-    const book = bookList.find(b => b.id === editingBookId);
-    if (!book) return;
-    const tempBook = { ...book, content: raw };
-    // Sauvegarder temporairement et ouvrir liseuse
-    const originalContent = book.content;
-    book.content = raw;
-    if (typeof openReader === 'function') openReader(editingBookId);
-    // Restaurer après fermeture (si l'utilisateur ne sauvegarde pas)
-    setTimeout(() => { book.content = originalContent; }, 100);
-  });
-
-  // Fermer éditeur
-  document.getElementById('adminEditorClose')?.addEventListener('click', () => {
-    document.getElementById('adminEditorPanel').hidden = true;
-    editingBookId = null;
-  });
-
-  // Sauvegarder contenu
-  document.getElementById('adminSaveContent')?.addEventListener('click', async () => {
-    if (!editingBookId) return;
-    const raw = document.getElementById('adminRawContent').value.trim();
-    const bookList = typeof books !== 'undefined' ? books : [];
-    const book = bookList.find(b => b.id === editingBookId);
-    if (!book) return;
-
-    book.content = raw;
-    if (typeof saveBooks === 'function') saveBooks(bookList);
-
-    // Sync Supabase si connecté
-    if (supabaseClient) {
-      const { error } = await supabaseClient
-        .from('books')
-        .update({ content: raw })
-        .eq('biblio_id', book.id);
-      if (error) {
-        if (typeof showToast === 'function') showToast('Sauvegardé localement (erreur Supabase : ' + error.message + ')', 'info');
-      } else {
-        if (typeof showToast === 'function') showToast('Contenu sauvegardé en local et dans Supabase ✓', 'success');
-      }
-    } else {
-      if (typeof showToast === 'function') showToast('Contenu sauvegardé localement ✓', 'success');
-    }
-
-    renderAdminBooksList(document.getElementById('adminBookSearch')?.value || '');
-    renderAdminBooksTable();
-    document.getElementById('adminEditorPanel').hidden = true;
-    editingBookId = null;
-  });
-}
-
-/* =========================================================================
-   11) SYNC SUPABASE — PUSH LIVRES
-   ========================================================================= */
-async function pushBooksToSupabase() {
+async function pushAllBooksToSupabase() {
   if (!supabaseClient) {
-    if (typeof showToast === 'function') showToast('Supabase non configuré.', 'error');
-    return;
-  }
-  const bookList = typeof books !== 'undefined' ? books : [];
-  if (!bookList.length) {
-    if (typeof showToast === 'function') showToast('Aucun livre à synchroniser.', 'info');
+    showToast("Veuillez d'abord connecter Supabase avec vos clés d'API.", "error");
+    switchAdminView("database");
     return;
   }
 
-  if (typeof showToast === 'function') showToast('Synchronisation en cours…', 'info');
+  books = loadBooks();
+  showToast("Synchronisation avec Supabase en cours...", "info");
 
-  const rows = bookList.map(b => ({
-    biblio_id:  b.id,
-    title:      b.title,
-    author:     b.author,
-    category:   b.category || '',
-    year:       b.year || null,
-    max_copies: b.maxCopies || 1,
-    copies:     b.copies || 1,
-    cover_url:  b.cover || null,
-    content:    b.content || null
+  const rows = books.map(b => ({
+    biblio_id: b.id,
+    title: b.title,
+    author: b.author,
+    category: b.category,
+    year: b.year,
+    max_copies: b.maxCopies,
+    copies: b.copies,
+    cover_url: b.cover,
+    content: b.content
   }));
 
-  const { error } = await supabaseClient
-    .from('books')
-    .upsert(rows, { onConflict: 'biblio_id' });
+  const { error } = await supabaseClient.from("books").upsert(rows, { onConflict: "biblio_id" });
 
   if (error) {
-    if (typeof showToast === 'function') showToast('Erreur Supabase : ' + error.message, 'error');
+    showToast("Erreur Supabase : " + error.message, "error");
   } else {
-    if (typeof showToast === 'function') showToast(`${bookList.length} livres synchronisés avec Supabase ✓`, 'success');
+    showToast(`${books.length} livres synchronisés dans le Cloud Supabase ! ☁️`, "success");
   }
 }
 
-async function syncAllToSupabase() {
-  await pushBooksToSupabase();
-
-  if (!supabaseClient || !currentUser) return;
-
-  // Sync profil
-  const profile = typeof loadProfile === 'function' ? loadProfile() : null;
-  if (profile) {
-    await supabaseClient.from('user_profiles').upsert({
-      id:             currentUser.id,
-      display_name:   profile.name || '',
-      avatar_emoji:   profile.avatar || '📚',
-      bio:            profile.bio || '',
-      favorite_genre: profile.favoriteGenre || '',
-      reading_goal:   profile.readingGoal || 12
-    });
-  }
-
-  // Sync progression de lecture
-  const prog = typeof loadReadingProgress === 'function' ? loadReadingProgress() : {};
-  for (const [bookId, p] of Object.entries(prog)) {
-    await supabaseClient.from('reading_progress').upsert({
-      user_id:     currentUser.id,
-      book_id:     bookId,
-      percent:     p.percent || 0,
-      chapter_idx: p.chapter || 0,
-      is_finished: p.isFinished || false,
-      last_read_at: p.lastReadAt || new Date().toISOString()
-    }, { onConflict: 'user_id,book_id' });
-  }
-
-  // Sync favoris
-  const favs = typeof loadFavorites === 'function' ? loadFavorites() : [];
-  for (const bookId of favs) {
-    await supabaseClient.from('favorites').upsert({
-      user_id: currentUser.id,
-      book_id: bookId
-    }, { onConflict: 'user_id,book_id' });
-  }
-
-  if (typeof showToast === 'function') showToast('Synchronisation complète avec Supabase ✓', 'success');
-}
-
-/* =========================================================================
-   12) SYNC SUPABASE → LOCAL (téléchargement depuis cloud)
-   ========================================================================= */
-async function syncUserDataFromCloud() {
-  if (!supabaseClient || !currentUser) return;
-
-  try {
-    // Charger profil
-    const { data: profileData } = await supabaseClient
-      .from('user_profiles')
-      .select('*')
-      .eq('id', currentUser.id)
-      .single();
-
-    if (profileData && typeof saveProfile === 'function') {
-      saveProfile({
-        name: profileData.display_name || '',
-        avatar: profileData.avatar_emoji || '📚',
-        bio: profileData.bio || '',
-        favoriteGenre: profileData.favorite_genre || '',
-        readingGoal: profileData.reading_goal || 12
-      });
-    }
-
-    // Charger progression
-    const { data: progressData } = await supabaseClient
-      .from('reading_progress')
-      .select('*')
-      .eq('user_id', currentUser.id);
-
-    if (progressData?.length && typeof saveReadingProgress === 'function') {
-      const prog = {};
-      progressData.forEach(p => {
-        prog[p.book_id] = {
-          percent: p.percent,
-          chapter: p.chapter_idx,
-          isFinished: p.is_finished,
-          lastReadAt: p.last_read_at
-        };
-      });
-      saveReadingProgress(prog);
-    }
-
-    // Charger favoris
-    const { data: favsData } = await supabaseClient
-      .from('favorites')
-      .select('book_id')
-      .eq('user_id', currentUser.id);
-
-    if (favsData?.length && typeof saveFavorites === 'function') {
-      saveFavorites(favsData.map(f => f.book_id));
-    }
-
-    // Charger livres depuis Supabase
-    const { data: booksData } = await supabaseClient
-      .from('books')
-      .select('*');
-
-    if (booksData?.length) {
-      // Enrichir les livres locaux avec les contenus du cloud
-      const bookList = typeof books !== 'undefined' ? books : [];
-      let modified = false;
-      booksData.forEach(sb => {
-        const local = bookList.find(b => b.id === sb.biblio_id);
-        if (local) {
-          if (sb.content && !local.content) { local.content = sb.content; modified = true; }
-          if (sb.cover_url && !local.cover) { local.cover = sb.cover_url; modified = true; }
-        }
-      });
-      if (modified && typeof saveBooks === 'function') saveBooks(bookList);
-    }
-
-    if (typeof renderAll === 'function') renderAll();
-    if (typeof showToast === 'function') showToast('Données synchronisées depuis le cloud ✓', 'success');
-
-  } catch(e) {
-    console.warn('Erreur sync cloud:', e);
-  }
-}
-
-/* =========================================================================
-   13) UTILISATEURS (onglet admin)
-   ========================================================================= */
-async function loadAdminUsers() {
-  const container = document.getElementById('adminUsersList');
+async function loadCloudUsers() {
+  const container = document.getElementById("adminUsersContainer");
   if (!container) return;
 
   if (!supabaseClient) {
-    container.innerHTML = '<p class="empty-state">Connectez Supabase pour voir les utilisateurs.</p>';
+    container.innerHTML = `<p class="empty-state">Connectez Supabase pour afficher les utilisateurs enregistrés.</p>`;
     return;
   }
 
-  container.innerHTML = '<p class="empty-state">Chargement…</p>';
+  container.innerHTML = `<p class="empty-state">Chargement des utilisateurs...</p>`;
 
-  const { data, error } = await supabaseClient
-    .from('user_profiles')
-    .select('*')
-    .order('created_at', { ascending: false });
+  const { data, error } = await supabaseClient.from("user_profiles").select("*").order("created_at", { ascending: false });
 
   if (error) {
     container.innerHTML = `<p class="empty-state">Erreur : ${error.message}</p>`;
@@ -872,121 +827,188 @@ async function loadAdminUsers() {
   }
 
   if (!data?.length) {
-    container.innerHTML = '<p class="empty-state">Aucun utilisateur inscrit pour l\'instant.</p>';
+    container.innerHTML = `<p class="empty-state">Aucun utilisateur enregistré pour le moment.</p>`;
     return;
   }
 
   container.innerHTML = `
     <table class="book-table">
-      <thead><tr>
-        <th>Avatar</th><th>Nom</th><th>Genre favori</th><th>Objectif</th><th>Inscription</th>
-      </tr></thead>
+      <thead>
+        <tr>
+          <th>Avatar</th>
+          <th>Nom</th>
+          <th>Genre favori</th>
+          <th>Objectif</th>
+          <th>Date de création</th>
+        </tr>
+      </thead>
       <tbody>
         ${data.map(u => `
           <tr>
-            <td style="font-size:22px">${u.avatar_emoji || '👤'}</td>
-            <td><b>${escapeHTMLAdmin(u.display_name || 'Anonyme')}</b></td>
-            <td>${escapeHTMLAdmin(u.favorite_genre || '—')}</td>
-            <td>${u.reading_goal || '—'} livres/an</td>
+            <td style="font-size:22px;">${u.avatar_emoji || '👤'}</td>
+            <td><b>${escapeHTML(u.display_name || 'Anonyme')}</b></td>
+            <td>${escapeHTML(u.favorite_genre || '—')}</td>
+            <td>${u.reading_goal || 12} livres/an</td>
             <td>${u.created_at ? new Date(u.created_at).toLocaleDateString('fr-FR') : '—'}</td>
           </tr>
-        `).join('')}
+        `).join("")}
       </tbody>
     </table>
   `;
 }
 
-/* =========================================================================
-   14) IMPORT / EXPORT JSON
-   ========================================================================= */
-function exportBooksJson() {
-  const bookList = typeof books !== 'undefined' ? books : [];
-  if (!bookList.length) {
-    if (typeof showToast === 'function') showToast('Aucun livre à exporter.', 'error');
-    return;
-  }
-  const json = JSON.stringify(bookList, null, 2);
-  const blob = new Blob([json], { type: 'application/json' });
-  const url  = URL.createObjectURL(blob);
-  const a    = document.createElement('a');
-  a.href     = url;
-  a.download = `bibliotheque_${new Date().toISOString().slice(0,10)}.json`;
-  a.click();
-  URL.revokeObjectURL(url);
-  if (typeof showToast === 'function') showToast('Export JSON téléchargé ✓', 'success');
-}
+/* -------------------------------------------------------------------------
+   11) IMPORT / EXPORT
+   ------------------------------------------------------------------------- */
+function initImportExport() {
+  // Export JSON
+  document.getElementById("adminExportJsonBtn")?.addEventListener("click", () => {
+    books = loadBooks();
+    const json = JSON.stringify(books, null, 2);
+    const blob = new Blob([json], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `bibliotheque_backup_${new Date().toISOString().slice(0,10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast("Export JSON téléchargé !", "success");
+  });
 
-function importBooksJson(e) {
-  const file = e.target.files[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = (ev) => {
-    try {
-      const imported = JSON.parse(ev.target.result);
-      if (!Array.isArray(imported)) throw new Error('Format invalide');
-      const ok = confirm(`Importer ${imported.length} livres ? Les livres existants avec le même ID seront mis à jour.`);
-      if (!ok) return;
-
-      const bookList = typeof books !== 'undefined' ? books : [];
-      imported.forEach(ib => {
-        const existing = bookList.findIndex(b => b.id === ib.id);
-        if (existing >= 0) {
-          bookList[existing] = { ...bookList[existing], ...ib };
-        } else {
-          bookList.push(ib);
-        }
-      });
-
-      if (typeof saveBooks === 'function') saveBooks(bookList);
-      if (typeof renderAll === 'function') renderAll();
-      renderAdminView();
-      if (typeof showToast === 'function') showToast(`${imported.length} livres importés ✓`, 'success');
-    } catch(err) {
-      if (typeof showToast === 'function') showToast('Fichier JSON invalide : ' + err.message, 'error');
-    }
-  };
-  reader.readAsText(file, 'UTF-8');
-  e.target.value = '';
-}
-
-/* =========================================================================
-   15) UTILITAIRES
-   ========================================================================= */
-function escapeHTMLAdmin(str) {
-  return String(str || '')
-    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
-    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-}
-function escapeAttrAdmin(str) {
-  return String(str || '').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
-}
-
-/* =========================================================================
-   16) EXTENSION VIEW_META — ADMIN
-   ========================================================================= */
-// Injecté après le chargement de script.js
-window.addEventListener('load', () => {
-  // Ajouter la vue admin dans VIEW_META si elle n'existe pas
-  if (typeof VIEW_META !== 'undefined' && !VIEW_META.admin) {
-    VIEW_META.admin = {
-      title: 'Espace Administrateur',
-      subtitle: 'Gestion des contenus, livres et synchronisation Supabase'
-    };
-  }
-
-  // Rendre adminView quand on switche vers admin
-  const originalSwitchView = window.switchView;
-  if (typeof originalSwitchView === 'function') {
-    window.switchView = function(viewName) {
-      originalSwitchView(viewName);
-      if (viewName === 'admin') {
-        if (sessionStorage.getItem(ADMIN_SESSION_KEY) !== 'true') {
-          originalSwitchView('dashboard');
-          document.getElementById('adminLoginOverlay').hidden = false;
-          return;
-        }
-        renderAdminView();
+  // Import JSON
+  document.getElementById("adminImportJsonFile")?.addEventListener("change", (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const imported = JSON.parse(ev.target.result);
+        if (!Array.isArray(imported)) throw new Error("Format de fichier non reconnu.");
+        books = loadBooks();
+        imported.forEach(ib => {
+          const idx = books.findIndex(b => b.id === ib.id);
+          if (idx >= 0) books[idx] = { ...books[idx], ...ib };
+          else books.push(ib);
+        });
+        saveBooks(books);
+        renderAllAdminViews();
+        showToast(`${imported.length} livre(s) importé(s) avec succès !`, "success");
+      } catch (err) {
+        showToast("Erreur lors de l'import : " + err.message, "error");
       }
     };
-  }
-});
+    reader.readAsText(file, "UTF-8");
+    e.target.value = "";
+  });
+
+  // Export PDF
+  document.getElementById("adminExportPdfBtn")?.addEventListener("click", () => {
+    books = loadBooks();
+    if (!window.jspdf || !books.length) {
+      showToast("Aucun livre à exporter.", "error"); return;
+    }
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    doc.setFontSize(16);
+    doc.text("Bibliothèque — Inventaire Administrateur", 14, 16);
+    const rows = books.map(b => [b.id, b.title, b.author, b.category, String(b.year), `${b.copies}/${b.maxCopies}`]);
+    doc.autoTable({
+      head: [["ID", "Titre", "Auteur", "Catégorie", "Année", "Stock"]],
+      body: rows,
+      startY: 22,
+      headStyles: { fillColor: [17, 32, 28] }
+    });
+    doc.save("inventaire_bibliotheque.pdf");
+    showToast("Catalogue PDF généré !", "success");
+  });
+
+  // Export Excel
+  document.getElementById("adminExportExcelBtn")?.addEventListener("click", () => {
+    books = loadBooks();
+    if (!window.XLSX || !books.length) {
+      showToast("Aucun livre à exporter.", "error"); return;
+    }
+    const data = books.map(b => ({
+      ID: b.id,
+      Titre: b.title,
+      Auteur: b.author,
+      Catégorie: b.category,
+      Année: b.year,
+      "Disponibles": b.copies,
+      "Total": b.maxCopies,
+      "Contenu disponible": b.content ? "OUI" : "NON"
+    }));
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Livres");
+    XLSX.writeFile(wb, "inventaire_bibliotheque.xlsx");
+    showToast("Fichier Excel généré !", "success");
+  });
+
+  // Reset local
+  document.getElementById("adminResetLocalBtn")?.addEventListener("click", () => {
+    if (confirm("⚠️ Réinitialiser toutes les données locales ? Cette action est irréversible.")) {
+      localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem(COUNTER_KEY);
+      books = [];
+      renderAllAdminViews();
+      showToast("Données locales réinitialisées.", "info");
+    }
+  });
+}
+
+/* -------------------------------------------------------------------------
+   12) DEMO DATA (20 Livres enrichis)
+   ------------------------------------------------------------------------- */
+function seedDemoData() {
+  const SEED = [
+    { title: "Le Petit Prince", author: "Antoine de Saint-Exupéry", category: "Roman", year: 1943, copies: 5, cover: "https://covers.openlibrary.org/b/id/12836262-L.jpg", content: "--- Chapitre 1 : Les grandes personnes et les boas ---\nLorsque j'avais six ans j'ai vu, une fois, une magnifique image...\n\n--- Chapitre 2 : La rencontre dans le désert ---\nJ'ai ainsi vécu seul, sans personne avec qui parler...\n\n--- Chapitre 3 : Le secret du Renard ---\nOn ne voit bien qu'avec le cœur. L'essentiel est invisible pour les yeux." },
+    { title: "Python Facile", author: "Jean Dupont", category: "Informatique", year: 2020, copies: 3, cover: "https://images.unsplash.com/photo-1526379095098-d400fd0bf935?w=600&auto=format&fit=crop&q=80", content: "--- Chapitre 1 : Introduction à Python ---\nPython est un langage élégant et lisible...\n\n--- Chapitre 2 : Variables et Fonctions ---\nLes variables se déclarent sans type explicite." },
+    { title: "Les Misérables", author: "Victor Hugo", category: "Roman", year: 1862, copies: 4, cover: "https://covers.openlibrary.org/b/id/8231856-L.jpg", content: "--- Chapitre 1 : Un juste ---\nEn 1815, M. Charles-François-Bienvenu Myriel était évêque de Digne...\n\n--- Chapitre 2 : L'arrivée de Jean Valjean ---\nÀ l'heure où le soleil se couchait, un homme entra à pied..." },
+    { title: "Une Brève Histoire du Temps", author: "Stephen Hawking", category: "Science", year: 1988, copies: 2, cover: "https://covers.openlibrary.org/b/id/8306073-L.jpg", content: "--- Chapitre 1 : Notre image de l'Univers ---\nUn scientifique réputé donnait un jour une conférence sur l'astronomie...\n\n--- Chapitre 2 : L'Espace et le Temps ---\nAlbert Einstein a démontré la relativité de l'espace-temps." },
+    { title: "Sapiens", author: "Yuval Noah Harari", category: "Histoire", year: 2011, copies: 6, cover: "https://covers.openlibrary.org/b/id/12539702-L.jpg", content: "--- Chapitre 1 : Un animal sans importance ---\nIl y a 100 000 ans, au moins six espèces humaines habitaient la Terre...\n\n--- Chapitre 2 : La Révolution Cognitive ---\nLa capacité de créer et de croire en des fictions a permis la coopération." },
+    { title: "1984", author: "George Orwell", category: "Science-fiction", year: 1949, copies: 5, cover: "https://covers.openlibrary.org/b/id/12547191-L.jpg", content: "--- Chapitre 1 : Big Brother vous regarde ---\nC'était une journée d'avril froide et claire...\n\n--- Chapitre 2 : Le journal intime interdit ---\nWinston s'assit hors de portée du télécran et commença à écrire." },
+    { title: "Le Comte de Monte-Cristo", author: "Alexandre Dumas", category: "Roman", year: 1844, copies: 3, cover: "https://covers.openlibrary.org/b/id/8225261-L.jpg", content: "--- Chapitre 1 : L'arrivée à Marseille ---\nLe 24 février 1815, le trois-mâts le Pharaon arriva au port...\n\n--- Chapitre 2 : Le complot ---\nEdmond Dantès fut arrêté en plein banquet de fiançailles." },
+    { title: "Clean Code", author: "Robert C. Martin", category: "Informatique", year: 2008, copies: 3, cover: "https://covers.openlibrary.org/b/id/10522435-L.jpg", content: "--- Chapitre 1 : Pourquoi le code propre compte ---\nUn code propre est lisible, simple et direct...\n\n--- Chapitre 2 : Nommer avec soin ---\nLes noms doivent révéler clairement l'intention." }
+  ];
+
+  books = SEED.map(s => ({
+    id: generateId(),
+    title: s.title,
+    author: s.author,
+    category: s.category,
+    year: s.year,
+    maxCopies: s.copies,
+    copies: s.copies,
+    cover: s.cover,
+    content: s.content
+  }));
+  saveBooks(books);
+}
+
+/* -------------------------------------------------------------------------
+   13) TOAST & UTILITAIRES
+   ------------------------------------------------------------------------- */
+function showToast(msg, type = "info") {
+  const container = document.getElementById("toastContainer");
+  if (!container) return;
+  const toast = document.createElement("div");
+  toast.className = `toast ${type}`;
+  toast.textContent = msg;
+  container.appendChild(toast);
+  setTimeout(() => toast.remove(), 3200);
+}
+
+function escapeHTML(str) {
+  return String(str || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+function escapeAttr(str) {
+  return String(str || "").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+
+function renderAllAdminViews() {
+  renderDashboardView();
+  renderManageBooksTable();
+  renderContentBooksList();
+}
