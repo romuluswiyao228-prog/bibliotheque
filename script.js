@@ -865,13 +865,6 @@ let activeReadingBook = null;
 let activeChapterIndex = 0;
 let readerChapters = [];
 
-// Premier démarrage
-if (books.length === 0) {
-  seedDemoData();
-} else {
-  upgradeExistingBooksIfNeeded();
-}
-
 /* ---------------------------------------------------------------------
    4) NAVIGATION
    --------------------------------------------------------------------- */
@@ -1641,14 +1634,6 @@ function getFilteredSortedBooks() {
   }
   return result;
 }
-
-document.getElementById("seedDataBtn").addEventListener("click", () => {
-  const proceed = confirm("Cela remplacera tous les livres actuels par les 20 livres enrichis (couvertures & chapitres). Continuer ?");
-  if (!proceed) return;
-  seedDemoData();
-  showToast("20 livres de test chargés avec couvertures et textes !", "success");
-  renderAll();
-});
 
 /* ---------------------------------------------------------------------
    13) RENDU — TABLEAU DE BORD
