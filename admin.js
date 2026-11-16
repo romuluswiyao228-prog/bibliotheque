@@ -22,14 +22,11 @@ const SPINE_COLORS = [
    2) ÉTAT GLOBAL ADMIN
    ------------------------------------------------------------------------- */
 let books = loadBooks();
-if (books.length === 0) {
-  seedDemoData();
-  books = loadBooks();
-}
 let supabaseClient = null;
 let editingBookId = null;
 let activeEditorBookId = null;
 let pendingDeleteId = null;
+let pendingDeleteAll = false;
 
 /* -------------------------------------------------------------------------
    3) CHARGEMENT & PERSISTANCE LIVRES
@@ -76,6 +73,7 @@ document.addEventListener("DOMContentLoaded", () => {
   checkAdminAuth();
   initNav();
   initBookForm();
+  initAdvancedImports();
   initContentEditor();
   initManageBooks();
   initSupabase();
@@ -236,8 +234,99 @@ function renderDashboardView() {
 }
 
 /* -------------------------------------------------------------------------
-   7) FORMULAIRE AJOUT / MODIFICATION LIVRE
+   6bis) IMPORT PDF — extraction du texte via pdf.js
    ------------------------------------------------------------------------- */
+async function extractTextFromPdf(file) {
+  if (!window["pdfjsLib"]) {
+    throw new Error("La librairie pdf.js n'a pas pu se charger (vérifiez votre connexion internet).");
+  }
+  const buffer = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
+  const pageBlocks = [];
+
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const textContent = await page.getTextContent();
+    const pageText = textContent.items.map(item => item.str).join(" ").replace(/\s+/g, " ").trim();
+    pageBlocks.push(`--- Page ${i} ---\n${pageText || "(page vide ou image non extractible)"}`);
+  }
+
+  return pageBlocks.join("\n\n");
+}
+
+/* -------------------------------------------------------------------------
+   6ter) STOCKAGE PDF NATIF — enregistre le PDF en base64 + génère des miniatures
+   ------------------------------------------------------------------------- */
+async function storePdfNative(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (ev) => resolve(ev.target.result); // data:application/pdf;base64,...
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+async function generatePdfPagePreviews(base64Data, maxPages = 4) {
+  if (!window["pdfjsLib"]) return [];
+  const previews = [];
+  try {
+    const pdfData = atob(base64Data.split(",")[1]);
+    const uint8 = new Uint8Array(pdfData.length);
+    for (let i = 0; i < pdfData.length; i++) uint8[i] = pdfData.charCodeAt(i);
+    const pdf = await pdfjsLib.getDocument({ data: uint8 }).promise;
+    const count = Math.min(maxPages, pdf.numPages);
+    for (let i = 1; i <= count; i++) {
+      const page = await pdf.getPage(i);
+      const viewport = page.getViewport({ scale: 0.4 });
+      const canvas = document.createElement("canvas");
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
+      await page.render({ canvasContext: canvas.getContext("2d"), viewport }).promise;
+      previews.push({ pageNum: i, dataUrl: canvas.toDataURL("image/jpeg", 0.7) });
+    }
+  } catch (e) {
+    console.warn("Erreur génération miniatures PDF", e);
+  }
+  return previews;
+}
+
+async function getPdfPageCount(base64Data) {
+  if (!window["pdfjsLib"]) return 0;
+  try {
+    const pdfData = atob(base64Data.split(",")[1]);
+    const uint8 = new Uint8Array(pdfData.length);
+    for (let i = 0; i < pdfData.length; i++) uint8[i] = pdfData.charCodeAt(i);
+    const pdf = await pdfjsLib.getDocument({ data: uint8 }).promise;
+    return pdf.numPages;
+  } catch (e) { return 0; }
+}
+
+/* -------------------------------------------------------------------------
+   6quart) STOCKAGE IMAGES — convertit les images en base64
+   ------------------------------------------------------------------------- */
+async function storeImages(files) {
+  const pages = [];
+  const sorted = Array.from(files).sort((a, b) => a.name.localeCompare(b.name));
+  for (const file of sorted) {
+    const data = await new Promise((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = ev => resolve(ev.target.result);
+      r.onerror = reject;
+      r.readAsDataURL(file);
+    });
+    pages.push(data);
+  }
+  return pages;
+}
+
+/* -------------------------------------------------------------------------
+   7) FORMULAIRE AJOUT / MODIFICATION LIVRE (UNIVERSEL)
+   ------------------------------------------------------------------------- */
+// État de l'import en cours
+let _pendingPdfBase64 = null;
+let _pendingPdfPageCount = 0;
+let _pendingImages = [];
+
 function initBookForm() {
   const form = document.getElementById("adminBookForm");
   const coverInput = document.getElementById("bookCover");
@@ -246,10 +335,28 @@ function initBookForm() {
   const cancelBtn = document.getElementById("adminCancelEditBtn");
   const removeCoverBtn = document.getElementById("adminRemoveCoverBtn");
 
+  // ------ Navigation 3 Onglets ------
+  document.querySelectorAll(".add-book-tab-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".add-book-tab-btn").forEach(b => b.classList.remove("active"));
+      document.querySelectorAll(".add-book-tab-panel").forEach(p => p.classList.remove("active"));
+      btn.classList.add("active");
+      const targetId = "panel-" + btn.dataset.tab;
+      document.getElementById(targetId)?.classList.add("active");
+    });
+  });
+
+  // ------ Sélecteur de type de contenu ------
+  document.querySelectorAll('input[name="bookContentType"]').forEach(radio => {
+    radio.addEventListener("change", () => switchContentTypePanel(radio.value));
+  });
+
+  // ------ Couverture URL ------
   coverInput?.addEventListener("input", () => {
     updateCoverPreview(coverInput.value.trim());
   });
 
+  // ------ Couverture fichier ------
   coverFile?.addEventListener("change", (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -283,6 +390,7 @@ function initBookForm() {
     updateCoverPreview("");
   });
 
+  // ------ Import .txt pour mode texte ------
   txtImport?.addEventListener("change", (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -295,61 +403,385 @@ function initBookForm() {
     e.target.value = "";
   });
 
+  // ------ Extraction texte d'un PDF (mode texte) ------
+  const pdfTextImport = document.getElementById("bookPdfTextImport");
+  const pdfStatus = document.getElementById("bookPdfImportStatus");
+  pdfTextImport?.addEventListener("change", async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    pdfStatus.hidden = false;
+    pdfStatus.textContent = `⏳ Extraction du texte de « ${file.name} » en cours…`;
+    try {
+      const text = await extractTextFromPdf(file);
+      document.getElementById("bookTextContent").value = text;
+      const pageCount = (text.match(/^--- Page \d+ ---/gm) || []).length;
+      pdfStatus.textContent = `✓ PDF importé : ${pageCount} page(s) converties en chapitres.`;
+      showToast(`PDF « ${file.name} » importé et découpé en chapitres !`, "success");
+    } catch (err) {
+      pdfStatus.textContent = `✗ Échec de l'import PDF : ${err.message}`;
+      showToast("Impossible d'extraire le texte de ce PDF.", "error");
+    }
+    e.target.value = "";
+  });
+
+  // ------ Import PDF natif ------
+  const pdfNativeImport = document.getElementById("bookPdfNativeImport");
+  pdfNativeImport?.addEventListener("change", async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    await handlePdfNativeImport(file);
+    e.target.value = "";
+  });
+
+  // Drag & Drop pour la zone PDF
+  const pdfDropZone = document.getElementById("adminPdfDropZone");
+  if (pdfDropZone) {
+    pdfDropZone.addEventListener("dragover", (e) => { e.preventDefault(); pdfDropZone.classList.add("drag-over"); });
+    pdfDropZone.addEventListener("dragleave", () => pdfDropZone.classList.remove("drag-over"));
+    pdfDropZone.addEventListener("drop", async (e) => {
+      e.preventDefault();
+      pdfDropZone.classList.remove("drag-over");
+      const file = e.dataTransfer.files[0];
+      if (file && file.type === "application/pdf") await handlePdfNativeImport(file);
+      else showToast("Veuillez déposer un fichier PDF.", "error");
+    });
+  }
+
+  // Bouton supprimer PDF
+  document.getElementById("adminPdfRemoveBtn")?.addEventListener("click", () => {
+    _pendingPdfBase64 = null;
+    _pendingPdfPageCount = 0;
+    document.getElementById("bookPdfData").value = "";
+    document.getElementById("bookPdfPageCount").value = "0";
+    document.getElementById("adminPdfInfo").hidden = true;
+    document.getElementById("adminPdfDropZone").hidden = false;
+    showToast("PDF supprimé.", "info");
+  });
+
+  // ------ Import Images ------
+  const imagesImport = document.getElementById("bookImagesImport");
+  imagesImport?.addEventListener("change", async (e) => {
+    const files = e.target.files;
+    if (!files || !files.length) return;
+    await handleImagesImport(files);
+    e.target.value = "";
+  });
+
+  // Drag & Drop pour la zone images
+  const imagesDropZone = document.getElementById("adminImagesDropZone");
+  if (imagesDropZone) {
+    imagesDropZone.addEventListener("dragover", (e) => { e.preventDefault(); imagesDropZone.classList.add("drag-over"); });
+    imagesDropZone.addEventListener("dragleave", () => imagesDropZone.classList.remove("drag-over"));
+    imagesDropZone.addEventListener("drop", async (e) => {
+      e.preventDefault();
+      imagesDropZone.classList.remove("drag-over");
+      const files = e.dataTransfer.files;
+      if (files.length) await handleImagesImport(files);
+    });
+  }
+
+  document.getElementById("adminImagesRemoveAllBtn")?.addEventListener("click", () => {
+    _pendingImages = [];
+    document.getElementById("bookImagesData").value = "";
+    document.getElementById("adminImagesPreviewGrid").hidden = true;
+    document.getElementById("adminImagesDropZone").hidden = false;
+    showToast("Toutes les images supprimées.", "info");
+  });
+
   cancelBtn?.addEventListener("click", resetBookForm);
 
+  // ------ Soumission du formulaire (avec vérif doublons) ------
   form?.addEventListener("submit", (e) => {
     e.preventDefault();
+    const isbn = document.getElementById("bookIsbn").value.trim();
     const title = document.getElementById("bookTitle").value.trim();
     const author = document.getElementById("bookAuthor").value.trim();
     const category = document.getElementById("bookCategory").value.trim();
     const year = parseInt(document.getElementById("bookYear").value, 10);
+    const language = document.getElementById("bookLanguage").value.trim();
+    const description = document.getElementById("bookDescription").value.trim();
     const copies = parseInt(document.getElementById("bookCopies").value, 10);
     const cover = document.getElementById("bookCover").value.trim();
-    const content = document.getElementById("bookTextContent").value.trim();
+    const contentType = document.querySelector('input[name="bookContentType"]:checked')?.value || "text";
 
     if (!title || !author || !category || isNaN(year) || isNaN(copies)) {
       showToast("Veuillez remplir tous les champs obligatoires.", "error");
       return;
     }
 
-    books = loadBooks();
-
-    if (editingBookId) {
-      const book = books.find(b => b.id === editingBookId);
-      if (book) {
-        book.title = title;
-        book.author = author;
-        book.category = category;
-        book.year = year;
-        book.maxCopies = copies;
-        book.copies = Math.min(copies, book.copies || copies);
-        book.cover = cover;
-        book.content = content;
-        saveBooks(books);
-        syncBookToSupabase(book);
-        showToast(`« ${title} » modifié avec succès !`, "success");
-      }
-    } else {
-      const newBook = {
-        id: generateId(),
-        title,
-        author,
-        category,
-        year,
-        maxCopies: copies,
-        copies,
-        cover,
-        content
-      };
-      books.push(newBook);
-      saveBooks(books);
-      syncBookToSupabase(newBook);
-      showToast(`« ${title} » ajouté à la bibliothèque !`, "success");
+    // Validation selon le type
+    if (contentType === "pdf" && !_pendingPdfBase64 && !editingBookId) {
+      showToast("Veuillez importer un fichier PDF.", "error");
+      return;
+    }
+    if (contentType === "images" && _pendingImages.length === 0 && !editingBookId) {
+      showToast("Veuillez importer au moins une image de page.", "error");
+      return;
     }
 
-    resetBookForm();
-    renderAllAdminViews();
-    switchAdminView("manage-books");
+    books = loadBooks();
+
+    const bookData = {
+      isbn, title, author, category, year, language, description,
+      maxCopies: copies, cover, contentType
+    };
+
+    if (contentType === "text") {
+      bookData.content = document.getElementById("bookTextContent").value.trim();
+    } else if (contentType === "pdf") {
+      if (_pendingPdfBase64) {
+        bookData.pdfData = _pendingPdfBase64;
+        bookData.pageCount = _pendingPdfPageCount;
+      }
+      bookData.content = "";
+    } else if (contentType === "images") {
+      if (_pendingImages.length > 0) {
+        bookData.pages = _pendingImages;
+        bookData.pageCount = _pendingImages.length;
+      }
+      bookData.content = "";
+    }
+
+    // Détection de doublons (uniquement en création)
+    if (!editingBookId) {
+      const dup = books.find(b => (isbn && b.isbn === isbn) || (b.title.toLowerCase() === title.toLowerCase() && b.author.toLowerCase() === author.toLowerCase()));
+      if (dup) {
+        showDuplicateModal(dup, bookData, (choice) => {
+          if (choice === "update") {
+            _proceedSaveBook(dup.id, bookData);
+          } else if (choice === "new") {
+            _proceedSaveBook(null, bookData);
+          }
+        });
+        return;
+      }
+    }
+
+    _proceedSaveBook(editingBookId, bookData);
+  });
+
+  // Action bouton Lookup manuel
+  document.getElementById("isbnLookupManualBtn")?.addEventListener("click", async () => {
+    const isbn = document.getElementById("bookIsbn").value.trim();
+    if (!isbn) return showToast("Veuillez saisir un ISBN", "error");
+    document.getElementById("isbnLookupManualBtn").textContent = "⏳";
+    try {
+      const data = await fetchIsbnData(isbn);
+      if (data) {
+        if (data.title) document.getElementById("bookTitle").value = data.title;
+        if (data.author) document.getElementById("bookAuthor").value = data.author;
+        if (data.year) document.getElementById("bookYear").value = data.year;
+        if (data.cover) {
+          document.getElementById("bookCover").value = data.cover;
+          updateCoverPreview(data.cover);
+        }
+        document.getElementById("isbnAutoFillBadge").hidden = false;
+        setTimeout(() => document.getElementById("isbnAutoFillBadge").hidden = true, 3000);
+      } else {
+        showToast("Aucun résultat pour cet ISBN", "info");
+      }
+    } catch(e) {
+      showToast("Erreur API ISBN", "error");
+    }
+    document.getElementById("isbnLookupManualBtn").textContent = "🔍 Auto";
+  });
+}
+
+function _proceedSaveBook(idToUpdate, bookData) {
+  if (idToUpdate) {
+    const book = books.find(b => b.id === idToUpdate);
+    if (book) {
+      Object.assign(book, bookData);
+      book.copies = Math.min(bookData.maxCopies, book.copies || bookData.maxCopies);
+      saveBooks(books);
+      syncBookToSupabase(book);
+      showToast(`« ${book.title} » mis à jour avec succès !`, "success");
+    }
+  } else {
+    const newBook = {
+      id: generateId(),
+      copies: bookData.maxCopies,
+      ...bookData
+    };
+    books.push(newBook);
+    saveBooks(books);
+    syncBookToSupabase(newBook);
+    showToast(`« ${newBook.title} » ajouté à la bibliothèque !`, "success");
+  }
+
+  resetBookForm();
+  renderAllAdminViews();
+  switchAdminView("manage-books");
+}
+
+function showDuplicateModal(oldBook, newBookData, callback) {
+  const overlay = document.getElementById("duplicateModalOverlay");
+  const tbody = document.querySelector("#dupDiffTable tbody");
+  tbody.innerHTML = "";
+
+  const fields = [
+    { key: 'isbn', label: 'ISBN' },
+    { key: 'title', label: 'Titre' },
+    { key: 'author', label: 'Auteur' },
+    { key: 'category', label: 'Catégorie' },
+    { key: 'year', label: 'Année' },
+    { key: 'maxCopies', label: 'Exemplaires' }
+  ];
+
+  fields.forEach(f => {
+    let oldVal = oldBook[f.key] || '—';
+    let newVal = newBookData[f.key] || '—';
+    if (oldVal != newVal) {
+      tbody.innerHTML += `<tr>
+        <td class="diff-field-name">${f.label}</td>
+        <td class="diff-old-val">${escapeHTML(String(oldVal))}</td>
+        <td class="diff-new-val">${escapeHTML(String(newVal))}</td>
+      </tr>`;
+    }
+  });
+
+  if (tbody.innerHTML === "") {
+    tbody.innerHTML = `<tr><td colspan="3" class="muted">Aucune différence sur les champs principaux.</td></tr>`;
+  }
+
+  overlay.hidden = false;
+
+  const btnUpdate = document.getElementById("dupUpdateBtn");
+  const btnNew = document.getElementById("dupNewEditionBtn");
+  const btnCancel = document.getElementById("dupCancelBtn");
+
+  const cleanup = () => {
+    overlay.hidden = true;
+    btnUpdate.replaceWith(btnUpdate.cloneNode(true));
+    btnNew.replaceWith(btnNew.cloneNode(true));
+    btnCancel.replaceWith(btnCancel.cloneNode(true));
+  };
+
+  document.getElementById("dupUpdateBtn").addEventListener("click", () => { cleanup(); callback("update"); });
+  document.getElementById("dupNewEditionBtn").addEventListener("click", () => { cleanup(); callback("new"); });
+  document.getElementById("dupCancelBtn").addEventListener("click", () => { cleanup(); callback("cancel"); });
+}
+
+// Fonction utilitaire pour chercher ISBN via OpenLibrary
+async function fetchIsbnData(isbn) {
+  const cleanIsbn = isbn.replace(/[- ]/g, '');
+  const res = await fetch(`https://openlibrary.org/api/books?bibkeys=ISBN:${cleanIsbn}&format=json&jscmd=data`);
+  const data = await res.json();
+  const book = data[`ISBN:${cleanIsbn}`];
+  if (!book) return null;
+  return {
+    title: book.title || "",
+    author: book.authors ? book.authors.map(a => a.name).join(", ") : "",
+    year: book.publish_date ? parseInt(book.publish_date.match(/\d{4}/)?.[0]) : "",
+    cover: book.cover ? book.cover.large : ""
+  };
+}
+
+// Gestion import PDF natif
+async function handlePdfNativeImport(file) {
+  const dropZone = document.getElementById("adminPdfDropZone");
+  const infoPanel = document.getElementById("adminPdfInfo");
+  const previewEl = document.getElementById("adminPdfPagesPreview");
+
+  showToast(`⏳ Chargement de « ${file.name} »…`, "info");
+  dropZone.hidden = true;
+  infoPanel.hidden = false;
+
+  document.getElementById("adminPdfFileName").textContent = file.name;
+  document.getElementById("adminPdfFileSize").textContent = formatFileSize(file.size) + " · analyse en cours…";
+  previewEl.innerHTML = `<span class="muted">⏳ Génération des aperçus de pages…</span>`;
+
+  try {
+    _pendingPdfBase64 = await storePdfNative(file);
+    _pendingPdfPageCount = await getPdfPageCount(_pendingPdfBase64);
+
+    document.getElementById("bookPdfData").value = _pendingPdfBase64;
+    document.getElementById("bookPdfPageCount").value = _pendingPdfPageCount;
+    document.getElementById("adminPdfFileSize").textContent = `${formatFileSize(file.size)} · ${_pendingPdfPageCount} page(s)`;
+
+    // Générer miniatures des premières pages
+    const previews = await generatePdfPagePreviews(_pendingPdfBase64, 4);
+    if (previews.length) {
+      previewEl.innerHTML = `
+        <div class="pdf-previews-label">Aperçu des premières pages :</div>
+        <div class="pdf-previews-row">
+          ${previews.map(p => `
+            <div class="pdf-preview-thumb">
+              <img src="${p.dataUrl}" alt="Page ${p.pageNum}" />
+              <span>Page ${p.pageNum}</span>
+            </div>`).join("")}
+        </div>`;
+    } else {
+      previewEl.innerHTML = `<span class="muted">✅ PDF chargé (aperçu non disponible pour ce fichier)</span>`;
+    }
+
+    // Auto-fill couverture depuis la 1ère page si pas de couverture
+    if (previews.length && !document.getElementById("bookCover").value.trim()) {
+      document.getElementById("bookCover").value = previews[0].dataUrl;
+      updateCoverPreview(previews[0].dataUrl);
+    }
+
+    showToast(`PDF « ${file.name} » chargé (${_pendingPdfPageCount} pages)`, "success");
+  } catch (err) {
+    dropZone.hidden = false;
+    infoPanel.hidden = true;
+    _pendingPdfBase64 = null;
+    showToast(`Erreur lors du chargement du PDF : ${err.message}`, "error");
+  }
+}
+
+// Gestion import images
+async function handleImagesImport(files) {
+  const dropZone = document.getElementById("adminImagesDropZone");
+  const previewGrid = document.getElementById("adminImagesPreviewGrid");
+  const thumbsEl = document.getElementById("adminImagesThumbs");
+  const countEl = document.getElementById("adminImageCount");
+
+  showToast(`⏳ Chargement de ${files.length} image(s)…`, "info");
+
+  try {
+    const validFiles = Array.from(files).filter(f => f.type.startsWith("image/"));
+    _pendingImages = await storeImages(validFiles);
+    document.getElementById("bookImagesData").value = JSON.stringify(_pendingImages);
+
+    dropZone.hidden = true;
+    previewGrid.hidden = false;
+    countEl.textContent = `${_pendingImages.length} page(s) chargée(s)`;
+
+    thumbsEl.innerHTML = _pendingImages.map((src, idx) => `
+      <div class="image-thumb-item">
+        <img src="${src}" alt="Page ${idx + 1}" />
+        <span>Page ${idx + 1}</span>
+      </div>`).join("");
+
+    // Auto-fill couverture depuis la 1ère image si vide
+    if (_pendingImages.length && !document.getElementById("bookCover").value.trim()) {
+      document.getElementById("bookCover").value = _pendingImages[0];
+      updateCoverPreview(_pendingImages[0]);
+    }
+
+    showToast(`${_pendingImages.length} image(s) chargée(s) comme pages de livre !`, "success");
+  } catch (err) {
+    showToast(`Erreur lors du chargement des images : ${err.message}`, "error");
+  }
+}
+
+// Utilitaire taille de fichier
+function formatFileSize(bytes) {
+  if (bytes < 1024) return bytes + " o";
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " Ko";
+  return (bytes / (1024 * 1024)).toFixed(1) + " Mo";
+}
+
+// Basculer entre les panneaux selon le type sélectionné
+function switchContentTypePanel(type) {
+  document.getElementById("panelText").hidden = (type !== "text");
+  document.getElementById("panelPdf").hidden = (type !== "pdf");
+  document.getElementById("panelImages").hidden = (type !== "images");
+
+  // Mise à jour visuelle des labels
+  document.querySelectorAll(".content-type-btn").forEach(label => {
+    label.classList.toggle("active", label.dataset.type === type);
   });
 }
 
@@ -373,6 +805,10 @@ function editBookInForm(bookId) {
   if (!book) return;
 
   editingBookId = book.id;
+  _pendingPdfBase64 = null;
+  _pendingPdfPageCount = 0;
+  _pendingImages = [];
+
   document.getElementById("adminBookId").value = book.id;
   document.getElementById("bookTitle").value = book.title;
   document.getElementById("bookAuthor").value = book.author;
@@ -380,7 +816,33 @@ function editBookInForm(bookId) {
   document.getElementById("bookYear").value = book.year;
   document.getElementById("bookCopies").value = book.maxCopies;
   document.getElementById("bookCover").value = book.cover || "";
-  document.getElementById("bookTextContent").value = book.content || "";
+
+  const ct = book.contentType || "text";
+  const radioEl = document.querySelector(`input[name="bookContentType"][value="${ct}"]`);
+  if (radioEl) radioEl.checked = true;
+  switchContentTypePanel(ct);
+
+  if (ct === "text") {
+    document.getElementById("bookTextContent").value = book.content || "";
+  } else if (ct === "pdf" && book.pdfData) {
+    _pendingPdfBase64 = book.pdfData;
+    _pendingPdfPageCount = book.pageCount || 0;
+    document.getElementById("bookPdfData").value = book.pdfData;
+    document.getElementById("bookPdfPageCount").value = book.pageCount || 0;
+    document.getElementById("adminPdfInfo").hidden = false;
+    document.getElementById("adminPdfDropZone").hidden = true;
+    document.getElementById("adminPdfFileName").textContent = "PDF enregistré";
+    document.getElementById("adminPdfFileSize").textContent = `${book.pageCount || 0} page(s)`;
+    document.getElementById("adminPdfPagesPreview").innerHTML = `<span class="muted">✅ PDF chargé — ${book.pageCount || 0} pages</span>`;
+  } else if (ct === "images" && book.pages?.length) {
+    _pendingImages = book.pages;
+    document.getElementById("adminImagesDropZone").hidden = true;
+    document.getElementById("adminImagesPreviewGrid").hidden = false;
+    document.getElementById("adminImageCount").textContent = `${book.pages.length} page(s) chargée(s)`;
+    document.getElementById("adminImagesThumbs").innerHTML = book.pages.map((src, idx) =>
+      `<div class="image-thumb-item"><img src="${src}" alt="Page ${idx + 1}" /><span>Page ${idx + 1}</span></div>`
+    ).join("");
+  }
 
   updateCoverPreview(book.cover || "");
 
@@ -393,9 +855,37 @@ function editBookInForm(bookId) {
 
 function resetBookForm() {
   editingBookId = null;
+  _pendingPdfBase64 = null;
+  _pendingPdfPageCount = 0;
+  _pendingImages = [];
+
   const form = document.getElementById("adminBookForm");
   if (form) form.reset();
+
   updateCoverPreview("");
+  switchContentTypePanel("text");
+
+  // Réinitialiser panneaux PDF et images
+  const pdfInfo = document.getElementById("adminPdfInfo");
+  if (pdfInfo) pdfInfo.hidden = true;
+  const pdfDrop = document.getElementById("adminPdfDropZone");
+  if (pdfDrop) pdfDrop.hidden = false;
+  const imgGrid = document.getElementById("adminImagesPreviewGrid");
+  if (imgGrid) imgGrid.hidden = true;
+  const imgDrop = document.getElementById("adminImagesDropZone");
+  if (imgDrop) imgDrop.hidden = false;
+
+  const pdfStatus = document.getElementById("bookPdfImportStatus");
+  if (pdfStatus) pdfStatus.hidden = true;
+
+  // ✅ Bug 1 Fix — Remettre le premier onglet (Ajout manuel) actif
+  document.querySelectorAll(".add-book-tab-btn").forEach((b, i) => {
+    b.classList.toggle("active", i === 0);
+  });
+  document.querySelectorAll(".add-book-tab-panel").forEach((p, i) => {
+    p.classList.toggle("active", i === 0);
+  });
+
   document.getElementById("adminFormTitle").textContent = "➕ Ajouter un nouveau livre";
   document.getElementById("adminSubmitBookBtn").textContent = "💾 Enregistrer le livre";
   document.getElementById("adminCancelEditBtn").hidden = true;
@@ -412,13 +902,8 @@ function initManageBooks() {
   document.getElementById("managePushSupaBtn")?.addEventListener("click", pushAllBooksToSupabase);
 
   document.getElementById("adminQuickSyncBtn")?.addEventListener("click", pushAllBooksToSupabase);
-  document.getElementById("adminQuickSeedBtn")?.addEventListener("click", () => {
-    if (confirm("Charger les 20 livres de démonstration complets avec couvertures et chapitres ?")) {
-      seedDemoData();
-      renderAllAdminViews();
-      showToast("20 livres chargés avec succès !", "success");
-    }
-  });
+
+  document.getElementById("manageDeleteAllBtn")?.addEventListener("click", askDeleteAllBooks);
 }
 
 function renderManageBooksTable(query = "") {
@@ -474,6 +959,7 @@ function askDeleteBook(bookId) {
   if (!book) return;
 
   pendingDeleteId = book.id;
+  pendingDeleteAll = false;
   const overlay = document.getElementById("adminConfirmOverlay");
   const msg = document.getElementById("adminConfirmMessage");
   if (overlay && msg) {
@@ -482,12 +968,69 @@ function askDeleteBook(bookId) {
   }
 }
 
+function askDeleteAllBooks() {
+  pendingDeleteAll = true;
+  pendingDeleteId = null;
+  const overlay = document.getElementById("adminConfirmOverlay");
+  const title = document.getElementById("adminConfirmTitle");
+  const msg = document.getElementById("adminConfirmMessage");
+  if (overlay && msg) {
+    if (title) title.textContent = "Supprimer tous les livres";
+    msg.textContent = "Cette action est irréversible : tous les livres seront supprimés du LocalStorage et de Supabase. Continuer ?";
+    overlay.hidden = false;
+  }
+}
+
+async function deleteAllBooks() {
+  const count = books.length;
+
+  // LocalStorage
+  books = [];
+  localStorage.removeItem(STORAGE_KEY);
+  localStorage.removeItem(COUNTER_KEY);
+
+  // Supabase (si configuré)
+  if (supabaseClient) {
+    try {
+      const { data: rows, error: selErr } = await supabaseClient.from("books").select("biblio_id");
+      if (selErr) throw selErr;
+      const ids = [...new Set((rows || []).map(r => r.biblio_id).filter(Boolean))];
+
+      const { error: nullErr } = await supabaseClient.from("books").delete().is("biblio_id", null);
+      if (nullErr) throw nullErr;
+
+      for (let i = 0; i < ids.length; i += 200) {
+        const { error } = await supabaseClient.from("books").delete().in("biblio_id", ids.slice(i, i + 200));
+        if (error) throw error;
+      }
+    } catch (err) {
+      renderAllAdminViews();
+      showToast(`Livres supprimés localement, mais échec de la suppression Supabase : ${err.message}`, "error");
+      return;
+    }
+  }
+
+  renderAllAdminViews();
+  showToast(`✅ ${count} livre(s) supprimé(s) avec succès.`, "success");
+}
+
 document.getElementById("adminConfirmCancel")?.addEventListener("click", () => {
   pendingDeleteId = null;
+  pendingDeleteAll = false;
+  const title = document.getElementById("adminConfirmTitle");
+  if (title) title.textContent = "Confirmer la suppression";
   document.getElementById("adminConfirmOverlay").hidden = true;
 });
 
-document.getElementById("adminConfirmOk")?.addEventListener("click", () => {
+document.getElementById("adminConfirmOk")?.addEventListener("click", async () => {
+  if (pendingDeleteAll) {
+    pendingDeleteAll = false;
+    const title = document.getElementById("adminConfirmTitle");
+    if (title) title.textContent = "Confirmer la suppression";
+    document.getElementById("adminConfirmOverlay").hidden = true;
+    await deleteAllBooks();
+    return;
+  }
   if (pendingDeleteId) {
     books = loadBooks().filter(b => b.id !== pendingDeleteId);
     saveBooks(books);
@@ -551,6 +1094,21 @@ function initContentEditor() {
       showToast(`Fichier « ${file.name} » importé avec succès !`, "success");
     };
     reader.readAsText(file, "UTF-8");
+    e.target.value = "";
+  });
+
+  document.getElementById("editorPdfImport")?.addEventListener("change", async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    showToast(`⏳ Extraction du texte de « ${file.name} »…`, "info");
+    try {
+      const text = await extractTextFromPdf(file);
+      document.getElementById("editorRawTextarea").value = text;
+      parseRawToBlocks(text);
+      showToast(`PDF « ${file.name} » importé et découpé en chapitres !`, "success");
+    } catch (err) {
+      showToast("Impossible d'extraire le texte de ce PDF.", "error");
+    }
     e.target.value = "";
   });
 
@@ -770,13 +1328,17 @@ async function syncBookToSupabase(book) {
   if (!supabaseClient) return;
   await supabaseClient.from("books").upsert({
     biblio_id: book.id,
+    isbn: book.isbn,
     title: book.title,
     author: book.author,
     category: book.category,
     year: book.year,
+    language: book.language,
+    description: book.description,
     max_copies: book.maxCopies,
     copies: book.copies,
     cover_url: book.cover,
+    content_type: book.contentType,
     content: book.content
   }, { onConflict: "biblio_id" });
 }
@@ -793,13 +1355,17 @@ async function pushAllBooksToSupabase() {
 
   const rows = books.map(b => ({
     biblio_id: b.id,
+    isbn: b.isbn,
     title: b.title,
     author: b.author,
     category: b.category,
     year: b.year,
+    language: b.language,
+    description: b.description,
     max_copies: b.maxCopies,
     copies: b.copies,
     cover_url: b.cover,
+    content_type: b.contentType,
     content: b.content
   }));
 
@@ -962,35 +1528,6 @@ function initImportExport() {
 }
 
 /* -------------------------------------------------------------------------
-   12) DEMO DATA (20 Livres enrichis)
-   ------------------------------------------------------------------------- */
-function seedDemoData() {
-  const SEED = [
-    { title: "Le Petit Prince", author: "Antoine de Saint-Exupéry", category: "Roman", year: 1943, copies: 5, cover: "https://covers.openlibrary.org/b/id/12836262-L.jpg", content: "--- Chapitre 1 : Les grandes personnes et les boas ---\nLorsque j'avais six ans j'ai vu, une fois, une magnifique image...\n\n--- Chapitre 2 : La rencontre dans le désert ---\nJ'ai ainsi vécu seul, sans personne avec qui parler...\n\n--- Chapitre 3 : Le secret du Renard ---\nOn ne voit bien qu'avec le cœur. L'essentiel est invisible pour les yeux." },
-    { title: "Python Facile", author: "Jean Dupont", category: "Informatique", year: 2020, copies: 3, cover: "https://images.unsplash.com/photo-1526379095098-d400fd0bf935?w=600&auto=format&fit=crop&q=80", content: "--- Chapitre 1 : Introduction à Python ---\nPython est un langage élégant et lisible...\n\n--- Chapitre 2 : Variables et Fonctions ---\nLes variables se déclarent sans type explicite." },
-    { title: "Les Misérables", author: "Victor Hugo", category: "Roman", year: 1862, copies: 4, cover: "https://covers.openlibrary.org/b/id/8231856-L.jpg", content: "--- Chapitre 1 : Un juste ---\nEn 1815, M. Charles-François-Bienvenu Myriel était évêque de Digne...\n\n--- Chapitre 2 : L'arrivée de Jean Valjean ---\nÀ l'heure où le soleil se couchait, un homme entra à pied..." },
-    { title: "Une Brève Histoire du Temps", author: "Stephen Hawking", category: "Science", year: 1988, copies: 2, cover: "https://covers.openlibrary.org/b/id/8306073-L.jpg", content: "--- Chapitre 1 : Notre image de l'Univers ---\nUn scientifique réputé donnait un jour une conférence sur l'astronomie...\n\n--- Chapitre 2 : L'Espace et le Temps ---\nAlbert Einstein a démontré la relativité de l'espace-temps." },
-    { title: "Sapiens", author: "Yuval Noah Harari", category: "Histoire", year: 2011, copies: 6, cover: "https://covers.openlibrary.org/b/id/12539702-L.jpg", content: "--- Chapitre 1 : Un animal sans importance ---\nIl y a 100 000 ans, au moins six espèces humaines habitaient la Terre...\n\n--- Chapitre 2 : La Révolution Cognitive ---\nLa capacité de créer et de croire en des fictions a permis la coopération." },
-    { title: "1984", author: "George Orwell", category: "Science-fiction", year: 1949, copies: 5, cover: "https://covers.openlibrary.org/b/id/12547191-L.jpg", content: "--- Chapitre 1 : Big Brother vous regarde ---\nC'était une journée d'avril froide et claire...\n\n--- Chapitre 2 : Le journal intime interdit ---\nWinston s'assit hors de portée du télécran et commença à écrire." },
-    { title: "Le Comte de Monte-Cristo", author: "Alexandre Dumas", category: "Roman", year: 1844, copies: 3, cover: "https://covers.openlibrary.org/b/id/8225261-L.jpg", content: "--- Chapitre 1 : L'arrivée à Marseille ---\nLe 24 février 1815, le trois-mâts le Pharaon arriva au port...\n\n--- Chapitre 2 : Le complot ---\nEdmond Dantès fut arrêté en plein banquet de fiançailles." },
-    { title: "Clean Code", author: "Robert C. Martin", category: "Informatique", year: 2008, copies: 3, cover: "https://covers.openlibrary.org/b/id/10522435-L.jpg", content: "--- Chapitre 1 : Pourquoi le code propre compte ---\nUn code propre est lisible, simple et direct...\n\n--- Chapitre 2 : Nommer avec soin ---\nLes noms doivent révéler clairement l'intention." }
-  ];
-
-  books = SEED.map(s => ({
-    id: generateId(),
-    title: s.title,
-    author: s.author,
-    category: s.category,
-    year: s.year,
-    maxCopies: s.copies,
-    copies: s.copies,
-    cover: s.cover,
-    content: s.content
-  }));
-  saveBooks(books);
-}
-
-/* -------------------------------------------------------------------------
    13) TOAST & UTILITAIRES
    ------------------------------------------------------------------------- */
 function showToast(msg, type = "info") {
@@ -1016,3 +1553,208 @@ function renderAllAdminViews() {
   renderManageBooksTable();
   renderContentBooksList();
 }
+
+/* =========================================================================
+   8) IMPORTS AVANCÉS (CSV / ISBN)
+   ========================================================================= */
+function initAdvancedImports() {
+  // === IMPORT ISBN ===
+  const isbnSearchBtn = document.getElementById("isbnSearchBtn");
+  const isbnSearchInput = document.getElementById("isbnSearchInput");
+  const isbnResultsList = document.getElementById("isbnResultsList");
+
+  isbnSearchBtn?.addEventListener("click", async () => {
+    const query = isbnSearchInput.value.trim();
+    if (!query) return;
+
+    isbnSearchBtn.textContent = "⏳";
+    isbnSearchBtn.disabled = true;
+
+    try {
+      const data = await fetchIsbnData(query);
+      if (!data) {
+        isbnResultsList.innerHTML = `<div class="isbn-hint">Aucun livre trouvé pour cet ISBN.</div>`;
+      } else {
+        const isDup = books.some(b => (b.isbn === query) || (b.title.toLowerCase() === data.title.toLowerCase()));
+        
+        isbnResultsList.innerHTML = `
+          <div class="isbn-result-card">
+            <div class="isbn-result-cover">
+              ${data.cover ? `<img src="${escapeAttr(data.cover)}" alt="cover">` : '📖'}
+            </div>
+            <div class="isbn-result-info">
+              <strong>${escapeHTML(data.title)}</strong>
+              <span>${escapeHTML(data.author || 'Auteur inconnu')} — ${escapeHTML(String(data.year || ''))}</span>
+              <span class="isbn-result-badge ${isDup ? 'exists' : 'new'}">${isDup ? '⚠️ Existe déjà' : '✨ Nouveau'}</span>
+            </div>
+            <div class="isbn-result-actions">
+              <button class="btn btn-primary btn-sm" id="isbnAddBtn">➕ Ajouter à la bibliothèque</button>
+            </div>
+          </div>
+        `;
+
+        document.getElementById("isbnAddBtn").addEventListener("click", () => {
+          const newBook = {
+            id: generateId(),
+            isbn: query,
+            title: data.title,
+            author: data.author || 'Inconnu',
+            category: 'Général',
+            year: data.year,
+            maxCopies: 1,
+            copies: 1,
+            cover: data.cover || '',
+            contentType: 'text',
+            content: ''
+          };
+
+          if (isDup) {
+            const oldDup = books.find(b => (b.isbn === query) || (b.title.toLowerCase() === data.title.toLowerCase()));
+            showDuplicateModal(oldDup, newBook, (choice) => {
+              if (choice === 'update') _proceedSaveBook(oldDup.id, newBook);
+              else if (choice === 'new') _proceedSaveBook(null, newBook);
+            });
+          } else {
+            _proceedSaveBook(null, newBook);
+          }
+        });
+      }
+    } catch(e) {
+      isbnResultsList.innerHTML = `<div class="isbn-hint" style="color:red;">Erreur lors de la recherche.</div>`;
+    }
+    isbnSearchBtn.textContent = "🔍 Rechercher";
+    isbnSearchBtn.disabled = false;
+  });
+
+  // === IMPORT CSV ===
+  const csvDropZone = document.getElementById("csvDropZone");
+  const csvFileInput = document.getElementById("csvFileInput");
+  const csvDownloadTemplateBtn = document.getElementById("csvDownloadTemplateBtn");
+
+  csvDropZone?.addEventListener("dragover", (e) => { e.preventDefault(); csvDropZone.classList.add("dragover"); });
+  csvDropZone?.addEventListener("dragleave", () => csvDropZone.classList.remove("dragover"));
+  csvDropZone?.addEventListener("drop", (e) => {
+    e.preventDefault();
+    csvDropZone.classList.remove("dragover");
+    if (e.dataTransfer.files.length) handleCsvFile(e.dataTransfer.files[0]);
+  });
+
+  csvFileInput?.addEventListener("change", (e) => {
+    if (e.target.files.length) handleCsvFile(e.target.files[0]);
+    e.target.value = "";
+  });
+
+  csvDownloadTemplateBtn?.addEventListener("click", () => {
+    const csvContent = "data:text/csv;charset=utf-8,\uFEFF" + 
+      "titre,auteur,isbn,categorie,annee,langue,exemplaires,description,cover_url\n" +
+      "Le Comte de Monte-Cristo,Alexandre Dumas,9782070418124,Roman,1844,Français,3,,https://example.com/cover.jpg\n";
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", "modele_import_livres.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  });
+}
+
+function handleCsvFile(file) {
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const text = e.target.result;
+    const lines = text.split(/\r?\n/).filter(line => line.trim() !== "");
+    if (lines.length < 2) return showToast("Fichier CSV vide ou invalide.", "error");
+
+    const headers = lines[0].split(",").map(h => h.trim().toLowerCase());
+    const dataRows = lines.slice(1).map(line => line.split(",").map(c => c.trim()));
+
+    const previewSection = document.getElementById("csvPreviewSection");
+    let html = `
+      <div class="csv-preview-header">
+        <h4>Aperçu de l'import (${dataRows.length} lignes)</h4>
+      </div>
+      <div class="csv-preview-wrap">
+        <table class="csv-preview-table">
+          <thead>
+            <tr>${headers.map(h => `<th>${escapeHTML(h)}</th>`).join('')}</tr>
+          </thead>
+          <tbody>
+            ${dataRows.slice(0, 5).map(row => `<tr>${row.map(cell => `<td>${escapeHTML(cell)}</td>`).join('')}</tr>`).join('')}
+            ${dataRows.length > 5 ? `<tr><td colspan="${headers.length}" style="text-align:center; color:#746B5C;">... et ${dataRows.length - 5} autres lignes</td></tr>` : ''}
+          </tbody>
+        </table>
+      </div>
+      <div class="csv-import-actions">
+        <button class="btn btn-primary" id="csvConfirmImportBtn">✅ Confirmer l'importation</button>
+        <button class="btn btn-ghost" id="csvCancelImportBtn">Annuler</button>
+      </div>
+    `;
+
+    previewSection.innerHTML = html;
+    previewSection.hidden = false;
+
+    document.getElementById("csvCancelImportBtn").addEventListener("click", () => {
+      previewSection.hidden = true;
+      previewSection.innerHTML = "";
+    });
+
+    document.getElementById("csvConfirmImportBtn").addEventListener("click", () => {
+      let importedCount = 0;
+      let ignoredCount = 0;
+      let updatedCount = 0;
+
+      const ignoreDups = document.getElementById("csvOptIgnoreDups").checked;
+      const updateIsbn = document.getElementById("csvOptUpdateIsbn").checked;
+
+      books = loadBooks();
+
+      dataRows.forEach(row => {
+        const getVal = (colName) => {
+          const idx = headers.indexOf(colName);
+          return idx >= 0 ? row[idx] : "";
+        };
+
+        const title = getVal("titre");
+        if (!title) return;
+
+        const isbn = getVal("isbn");
+        const author = getVal("auteur") || "Inconnu";
+        const category = getVal("categorie") || "Général";
+        const year = parseInt(getVal("annee"), 10) || null;
+        const language = getVal("langue") || "";
+        const maxCopies = parseInt(getVal("exemplaires"), 10) || 1;
+        const description = getVal("description") || "";
+        const cover = getVal("cover_url") || "";
+
+        const dupIndex = books.findIndex(b => (isbn && b.isbn === isbn) || (b.title.toLowerCase() === title.toLowerCase() && b.author.toLowerCase() === author.toLowerCase()));
+
+        if (dupIndex >= 0) {
+          if (updateIsbn) {
+            books[dupIndex] = { ...books[dupIndex], title, author, category, year, language, maxCopies, description, cover };
+            updatedCount++;
+          } else if (ignoreDups) {
+            ignoredCount++;
+          } else {
+            // Force create (not handled in bulk easily, treating as ignore unless specific logic)
+            ignoredCount++;
+          }
+        } else {
+          books.push({
+            id: generateId(), isbn, title, author, category, year, language, maxCopies, description, cover,
+            copies: maxCopies, contentType: "text", content: ""
+          });
+          importedCount++;
+        }
+      });
+
+      saveBooks(books);
+      renderAllAdminViews();
+      switchAdminView("manage-books");
+      previewSection.hidden = true;
+      
+      showToast(`${importedCount} ajoutés, ${updatedCount} mis à jour, ${ignoredCount} ignorés.`, "success");
+    });
+  };
+  reader.readAsText(file, "UTF-8");
+}
+

@@ -94,6 +94,7 @@ input, select { font-family: var(--font-body); }
   position: sticky;
   top: 0;
   height: 100vh;
+  overflow-y: auto;
 }
 
 .brand {
@@ -1124,6 +1125,228 @@ input, select { font-family: var(--font-body); }
   display: flex;
   overflow: hidden;
   position: relative;
+}
+
+/* =========================================================================
+   ZONE PDF NATIF
+   ========================================================================= */
+.reader-pdf-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  overflow: auto;
+  background: #3a3a3a;
+  position: relative;
+  padding: 24px;
+  box-sizing: border-box;
+}
+.reader-pdf-area[hidden] {
+  display: none;
+}
+
+.reader-pdf-canvas-wrap {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  min-height: 100%;
+  width: 100%;
+}
+
+.reader-pdf-canvas {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  box-shadow: 0 8px 40px rgba(0,0,0,0.6);
+  background: #fff;
+  border-radius: 2px;
+}
+
+/* Spinner de chargement PDF */
+.reader-pdf-loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0,0,0,0.5);
+  color: #fff;
+  font-size: 14px;
+  gap: 12px;
+  z-index: 10;
+  border-radius: 4px;
+}
+.reader-pdf-loading[hidden] {
+  display: none;
+}
+.pdf-spinner {
+  width: 36px;
+  height: 36px;
+  border: 3px solid rgba(255,255,255,0.25);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: pdfSpin 0.7s linear infinite;
+}
+@keyframes pdfSpin {
+  to { transform: rotate(360deg); }
+}
+
+/* =========================================================================
+   ZONE IMAGES
+   ========================================================================= */
+.reader-images-area {
+  flex: 1;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  overflow: auto;
+  background: #3a3a3a;
+  padding: 24px;
+  box-sizing: border-box;
+}
+.reader-images-area[hidden] {
+  display: none;
+}
+.reader-image-wrap {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  width: 100%;
+  overflow: hidden;
+}
+.reader-current-image {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  box-shadow: 0 8px 40px rgba(0,0,0,0.6);
+  border-radius: 2px;
+  transform-origin: top center;
+  transition: transform 0.2s ease;
+}
+
+/* =========================================================================
+   INDICATEUR FLOTTANT DE PROGRESSION
+   ========================================================================= */
+.reader-floating-progress {
+  position: absolute;
+  bottom: 16px;
+  right: 20px;
+  background: rgba(0,0,0,0.65);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  padding: 4px 10px;
+  border-radius: 100px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+  z-index: 20;
+}
+.reader-floating-progress.visible {
+  opacity: 1;
+}
+
+/* Contrôles de navigation de page */
+.reader-page-nav {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.reader-page-input {
+  width: 44px;
+  text-align: center;
+  background: var(--reader-bg);
+  border: 1px solid var(--reader-border);
+  color: var(--reader-text);
+  border-radius: var(--radius-sm);
+  padding: 4px 6px;
+  font-size: 13px;
+  font-family: var(--font-mono);
+}
+.reader-zoom-label {
+  font-size: 12px;
+  font-family: var(--font-mono);
+  color: var(--reader-text-muted);
+  min-width: 38px;
+  text-align: center;
+  padding: 0 4px;
+}
+
+/* Barre de recherche */
+.reader-search-bar {
+  background: var(--reader-surface);
+  border-bottom: 1px solid var(--reader-border);
+  padding: 8px 20px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.reader-search-bar[hidden] {
+  display: none;
+}
+.reader-search-input {
+  flex: 1;
+  background: var(--reader-bg);
+  border: 1px solid var(--reader-border);
+  color: var(--reader-text);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+  font-size: 13px;
+}
+.reader-search-count {
+  font-size: 12px;
+  color: var(--reader-text-muted);
+  white-space: nowrap;
+}
+
+/* Panneau marque-pages */
+.reader-bookmarks-sidebar {
+  width: 260px;
+  background: var(--reader-surface);
+  border-right: 1px solid var(--reader-border);
+  overflow-y: auto;
+  padding: 16px;
+  flex-shrink: 0;
+  animation: slideIn 0.2s ease;
+}
+.reader-bookmarks-sidebar[hidden] {
+  display: none;
+}
+.reader-bookmark-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.bookmark-remove-btn {
+  background: transparent;
+  border: none;
+  color: var(--reader-text-muted);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+.bookmark-remove-btn:hover {
+  background: var(--reader-border);
+  color: var(--reader-text);
+}
+.reader-bookmarks-empty {
+  font-size: 13px;
+  color: var(--reader-text-muted);
+  text-align: center;
+  padding: 20px 0;
+}
+
+/* Page controls (PDF mode) */
+.reader-page-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
 /* Sommaire latéral */

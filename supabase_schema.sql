@@ -11,17 +11,31 @@
 CREATE TABLE IF NOT EXISTS public.books (
   id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   biblio_id   text UNIQUE,           -- Identifiant local (ex: LIV-0001)
+  isbn        text,                  -- ISBN 10 ou 13
   title       text NOT NULL,
   author      text NOT NULL,
   category    text DEFAULT '',
   year        integer,
+  language    text DEFAULT '',
+  description text DEFAULT '',
   max_copies  integer DEFAULT 1,
   copies      integer DEFAULT 1,
   cover_url   text,
+  content_type text DEFAULT 'text',  -- 'text', 'pdf', ou 'images'
   content     text,                  -- Texte complet avec chapitres
   created_at  timestamptz DEFAULT now(),
   updated_at  timestamptz DEFAULT now()
 );
+
+-- =========================================================================
+-- MIGRATION SANS PERTE DE DONNÉES (Pour tables existantes)
+-- Ces lignes ajoutent les nouvelles colonnes si la table existait déjà.
+-- =========================================================================
+ALTER TABLE public.books 
+  ADD COLUMN IF NOT EXISTS isbn text,
+  ADD COLUMN IF NOT EXISTS language text DEFAULT '',
+  ADD COLUMN IF NOT EXISTS description text DEFAULT '',
+  ADD COLUMN IF NOT EXISTS content_type text DEFAULT 'text';
 
 -- Trigger pour updated_at
 CREATE OR REPLACE FUNCTION update_updated_at()

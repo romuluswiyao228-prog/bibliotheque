@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Bibliothèque — Gestion des livres</title>
+  <meta name="description" content="Bibliothèque numérique — Gérez, lisez et empruntez vos livres en ligne." />
 
   <!-- Polices Google Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -13,6 +14,14 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+  <!-- pdf.js pour le rendu natif des livres PDF dans la liseuse -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script>
+    if (window["pdfjsLib"]) {
+      pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+    }
+  </script>
 
   <link rel="stylesheet" href="style.css" />
 </head>
@@ -163,42 +172,47 @@
         </div>
       </section>
 
-      <!-- ================= VUE : LISTE DES LIVRES ================= -->
+      <!-- ================= VUE : LISTE DES LIVRES (GRILLE MODERNISÉE) ================= -->
       <section class="view" id="view-list">
         <div class="panel">
-          <div class="panel-head panel-head-row">
-            <h2>Tous les livres</h2>
-            <div class="toolbar">
-              <input type="search" id="searchInput" placeholder="Rechercher par titre, auteur ou catégorie…" />
-              <select id="sortSelect">
-                <option value="">Trier…</option>
-                <option value="alpha">Ordre alphabétique (titre)</option>
-                <option value="category">Par catégorie</option>
-                <option value="year">Par année</option>
-              </select>
+          <div class="panel-head panel-head-row" style="margin-bottom:12px;">
+            <h2>Catalogue des livres</h2>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
               <button class="btn btn-outline" id="exportPdfBtn">Export PDF</button>
               <button class="btn btn-outline" id="exportExcelBtn">Export Excel</button>
             </div>
           </div>
-          <div class="table-wrap">
-            <table class="book-table" id="booksTable">
-              <thead>
-                <tr>
-                  <th></th>
-                  <th>Couverture</th>
-                  <th>ID</th>
-                  <th>Titre</th>
-                  <th>Auteur</th>
-                  <th>Catégorie</th>
-                  <th>Année</th>
-                  <th>Disponibilité</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody><!-- rempli en JS --></tbody>
-            </table>
-            <p class="empty-state" id="listEmptyState" hidden>Aucun livre ne correspond à votre recherche.</p>
+
+          <!-- Barre de recherche enrichie -->
+          <div class="books-search-bar">
+            <input type="search" id="searchInput" placeholder="Rechercher par titre, auteur, catégorie…" autocomplete="off" />
+            <select id="sortSelect">
+              <option value="">Trier…</option>
+              <option value="alpha">Titre (A–Z)</option>
+              <option value="category">Catégorie</option>
+              <option value="year">Année</option>
+            </select>
+            <div class="view-toggle-btns">
+              <button class="view-toggle-btn active" id="viewToggleGrid" title="Grille" aria-label="Vue grille">⊞</button>
+              <button class="view-toggle-btn" id="viewToggleList" title="Liste" aria-label="Vue liste">≣</button>
+            </div>
           </div>
+
+          <!-- Pills catégories dynamiques -->
+          <div class="books-category-pills" id="booksCategoryPills">
+            <button class="cat-pill active" data-cat="">Toutes</button>
+          </div>
+
+          <!-- Compteur -->
+          <p class="books-results-count" id="booksResultsCount">Chargement…</p>
+
+          <!-- Grille de cartes -->
+          <div class="books-grid-view" id="booksGridView"><!-- rempli en JS --></div>
+
+          <!-- Vue liste compacte -->
+          <div class="books-list-view" id="booksListView" hidden><!-- rempli en JS --></div>
+
+          <p class="empty-state" id="listEmptyState" hidden>Aucun livre ne correspond à votre recherche.</p>
         </div>
       </section>
 
@@ -324,7 +338,7 @@
     </main>
   </div>
 
-  <!-- ============ LISEUSE E-READER INTERACTIVE ============ -->
+  <!-- ============ LISEUSE E-READER UNIVERSELLE ============ -->
   <div class="reader-overlay" id="readerOverlay" hidden>
     <div class="reader-window theme-sepia" id="readerWindow">
       <header class="reader-header">
@@ -339,27 +353,69 @@
         </div>
 
         <div class="reader-controls">
-          <div class="reader-control-group">
+          <!-- Contrôles mode TEXTE -->
+          <div class="reader-control-group" id="readerTextControls">
             <button class="btn btn-reader-icon" id="readerFontDec" title="Diminuer la police">A-</button>
             <button class="btn btn-reader-icon" id="readerFontInc" title="Agrandir la police">A+</button>
             <button class="btn btn-reader-icon" id="readerFontFamily" title="Changer de police">Aa</button>
           </div>
-          <div class="reader-control-group">
+
+          <!-- Contrôles mode PDF / IMAGES -->
+          <div class="reader-control-group reader-page-controls" id="readerPageControls" hidden>
+            <button class="btn btn-reader-icon" id="readerZoomOut" title="Zoom arrière">−</button>
+            <span class="reader-zoom-label" id="readerZoomLabel">100%</span>
+            <button class="btn btn-reader-icon" id="readerZoomIn" title="Zoom avant">+</button>
+            <div class="reader-page-nav">
+              <button class="btn btn-reader-icon" id="readerPagePrev" title="Page précédente">❮</button>
+              <input type="number" id="readerPageInput" class="reader-page-input" min="1" value="1" />
+              <span id="readerPageTotal">/ 1</span>
+              <button class="btn btn-reader-icon" id="readerPageNext" title="Page suivante">❯</button>
+            </div>
+          </div>
+
+          <!-- Thèmes (mode texte seulement) -->
+          <div class="reader-control-group" id="readerThemeControls">
             <button class="btn btn-reader-icon theme-btn active" data-theme="sepia" title="Thème Sépia">📜</button>
             <button class="btn btn-reader-icon theme-btn" data-theme="light" title="Thème Clair">☀️</button>
             <button class="btn btn-reader-icon theme-btn" data-theme="dark" title="Thème Sombre">🌙</button>
           </div>
+
+          <!-- Recherche -->
+          <div class="reader-control-group">
+            <button class="btn btn-reader-icon" id="readerSearchToggle" title="Rechercher dans le livre">🔍</button>
+          </div>
+
+          <!-- Marque-pages -->
+          <div class="reader-control-group">
+            <button class="btn btn-reader-icon" id="readerBookmarkBtn" title="Ajouter un marque-page">🔖</button>
+            <button class="btn btn-reader-icon" id="readerBookmarkListToggle" title="Mes marque-pages">📚</button>
+          </div>
+
+          <!-- Sommaire (mode texte) -->
           <button class="btn btn-reader-icon" id="readerTocToggle" title="Sommaire des chapitres">📑 Sommaire</button>
+
           <button class="btn btn-reader-icon" id="readerFullscreenBtn" title="Plein écran">⛶</button>
         </div>
       </header>
+
+      <!-- Barre de recherche -->
+      <div class="reader-search-bar" id="readerSearchBar" hidden>
+        <input type="text" id="readerSearchInput" class="reader-search-input" placeholder="Rechercher dans le livre…" />
+        <span id="readerSearchCount" class="reader-search-count"></span>
+        <button class="btn btn-reader-icon" id="readerSearchPrev" title="Résultat précédent">❮</button>
+        <button class="btn btn-reader-icon" id="readerSearchNext" title="Résultat suivant">❯</button>
+        <button class="btn btn-ghost btn-sm" id="readerSearchClose">✕</button>
+      </div>
 
       <div class="reader-progress-track">
         <div class="reader-progress-fill" id="readerProgressBar"></div>
       </div>
 
+      <!-- Indicateur de progression flottant -->
+      <div class="reader-floating-progress" id="readerFloatingProgress">0%</div>
+
       <div class="reader-main">
-        <!-- Panneau Sommaire -->
+        <!-- Panneau Sommaire (mode texte) -->
         <aside class="reader-toc-sidebar" id="readerTocSidebar" hidden>
           <div class="reader-toc-head">
             <h3>Sommaire</h3>
@@ -368,7 +424,17 @@
           <ul class="reader-toc-list" id="readerTocList"></ul>
         </aside>
 
-        <!-- Zone de texte -->
+        <!-- Panneau Marque-pages -->
+        <aside class="reader-bookmarks-sidebar" id="readerBookmarksSidebar" hidden>
+          <div class="reader-toc-head">
+            <h3>🔖 Marque-pages</h3>
+            <button class="btn btn-ghost btn-sm" id="readerBookmarksSidebarClose">✕</button>
+          </div>
+          <ul class="reader-toc-list" id="readerBookmarksList"></ul>
+          <p class="empty-state reader-bookmarks-empty" id="readerBookmarksEmpty" hidden>Aucun marque-page pour ce livre.</p>
+        </aside>
+
+        <!-- ====== ZONE TEXTE (mode text) ====== -->
         <div class="reader-scroll-area" id="readerScrollArea">
           <div class="reader-content-wrapper">
             <div class="reader-chapter-badge" id="readerChapterBadge">Chapitre 1</div>
@@ -382,6 +448,24 @@
             </div>
           </div>
         </div>
+
+        <!-- ====== ZONE PDF NATIF (mode pdf) ====== -->
+        <div class="reader-pdf-area" id="readerPdfArea" hidden>
+          <div class="reader-pdf-loading" id="readerPdfLoading" hidden>
+            <div class="pdf-spinner"></div>
+            <span>Chargement de la page…</span>
+          </div>
+          <div class="reader-pdf-canvas-wrap" id="readerPdfCanvasWrap">
+            <canvas id="readerPdfCanvas" class="reader-pdf-canvas"></canvas>
+          </div>
+        </div>
+
+        <!-- ====== ZONE IMAGES (mode images) ====== -->
+        <div class="reader-images-area" id="readerImagesArea" hidden>
+          <div class="reader-image-wrap" id="readerImageWrap">
+            <img id="readerCurrentImage" class="reader-current-image" src="" alt="Page du livre" />
+          </div>
+        </div>
       </div>
 
       <footer class="reader-footer">
@@ -390,6 +474,54 @@
           <button class="btn btn-ghost btn-sm" id="readerResetProgressBtn">↺ Réinitialiser ma progression</button>
         </div>
       </footer>
+    </div>
+  </div>
+
+  <!-- ============ PANNEAU DÉTAIL LIVRE ============ -->
+  <div class="book-detail-overlay" id="bookDetailOverlay" hidden></div>
+  <div class="book-detail-panel" id="bookDetailPanel" hidden>
+    <!-- Hero avec fond flou -->
+    <div class="bdp-hero">
+      <div class="bdp-hero-bg" id="bdpHeroBg"></div>
+      <button class="bdp-close-btn" id="bdpCloseBtn" title="Fermer">✕</button>
+      <div class="bdp-hero-content">
+        <div id="bdpCoverWrap"><!-- couverture ou fallback --></div>
+        <div class="bdp-meta-hero">
+          <div class="bdp-title" id="bdpTitle">Titre</div>
+          <div class="bdp-author" id="bdpAuthor">Auteur</div>
+          <div class="bdp-badges" id="bdpBadges"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Corps scrollable -->
+    <div class="bdp-body">
+      <!-- Méta-données -->
+      <div class="bdp-meta-grid" id="bdpMetaGrid"></div>
+
+      <!-- Description / Contenu -->
+      <div id="bdpDescSection">
+        <div class="bdp-section-title">À propos</div>
+        <p class="bdp-description" id="bdpDescription">Aucune description disponible.</p>
+      </div>
+    </div>
+
+    <!-- Actions -->
+    <div class="bdp-actions">
+      <button class="bdp-btn-read" id="bdpReadBtn">📖 Ouvrir la liseuse</button>
+      <button class="bdp-btn-borrow" id="bdpBorrowBtn">↷ Emprunter ce livre</button>
+    </div>
+  </div>
+
+  <!-- ============ MODALE DE CONFIRMATION (suppression, etc.) ============ -->
+  <div class="modal-overlay" id="confirmOverlay" hidden>
+    <div class="modal">
+      <h3>Confirmation</h3>
+      <p id="confirmMessage">Voulez-vous vraiment effectuer cette action ?</p>
+      <div class="modal-actions">
+        <button class="btn btn-outline" id="confirmCancelBtn">Annuler</button>
+        <button class="btn btn-danger" id="confirmOkBtn">Confirmer</button>
+      </div>
     </div>
   </div>
 

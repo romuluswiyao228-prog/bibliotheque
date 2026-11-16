@@ -20,502 +20,6 @@ const SPINE_COLORS = [
 ];
 
 /* ---------------------------------------------------------------------
-   1 bis) 20 LIVRES DE TEST AVEC COUVERTURES & TEXTES COMPLETS
-   --------------------------------------------------------------------- */
-const SEED_BOOKS_DATA = [
-  {
-    title: "Le Petit Prince",
-    author: "Antoine de Saint-Exupéry",
-    category: "Roman",
-    year: 1943,
-    copies: 5,
-    cover: "https://covers.openlibrary.org/b/id/12836262-L.jpg",
-    content: `--- Chapitre 1 : Les grandes personnes et les serpents boas ---
-Lorsque j'avais six ans j'ai vu, une fois, une magnifique image, dans un livre sur la Forêt Vierge qui s'appelait « Histoires Vécues ». Ça représentait un serpent boa qui avalait un fauve.
-
-On disait dans le livre : « Les serpents boas avalent leur proie tout entière, sans la mâcher. Ensuite ils ne peuvent plus bouger et ils dorment pendant les six mois de leur digestion. »
-
-J'ai alors beaucoup réfléchi sur les aventures de la jungle et, à mon tour, j'ai réussi, avec un crayon de couleur, à tracer mon premier dessin. Mon dessin numéro 1. Il était comme ça : j'avais dessiné l'intérieur d'un boa digérant un éléphant.
-
-J'ai montré mon chef-d'œuvre aux grandes personnes et je leur ai demandé si mon dessin leur faisait peur. Elles m'ont répondu : « Pourquoi un chapeau ferait-il peur ? » Mon dessin ne représentait pas un chapeau. Il représentait un serpent boa qui digérait un éléphant. J'ai alors dessiné l'intérieur du serpent boa, afin que les grandes personnes puissent comprendre. Elles ont toujours besoin d'explications.
-
---- Chapitre 2 : La rencontre dans le désert ---
-J'ai ainsi vécu seul, sans personne avec qui parler véritablement, jusqu'à une panne dans le désert du Sahara, il y a six ans. Quelque chose s'était cassé dans mon moteur. Et comme je n'avais avec moi ni mécanicien, ni passagers, je me préparais à essayer de réussir, tout seul, une réparation difficile. C'était pour moi une question de vie ou de mort. J'avais à peine de l'eau à boire pour huit jours.
-
-Le premier soir je me suis donc endormi sur le sable à mille milles de toute terre habitée. J'étais bien plus isolé qu'un naufragé sur un radeau au milieu de l'Océan. Alors vous imaginez ma surprise, au lever du jour, quand une drôle de petite voix m'a réveillé. Elle disait :
-— S'il vous plaît... dessine-moi un mouton !
-— Hein !
-— Dessine-moi un mouton...
-
-Je sautai sur mes pieds comme si j'avais été frappé par la foudre. Je me frottai bien les yeux. Je regardai bien. Et je vis un petit bonhomme tout à fait extraordinaire qui me considérait gravement.
-
---- Chapitre 3 : L'apprivoisement et le secret du Renard ---
-— Qu'est-ce que signifie « apprivoiser » ? demanda le petit prince.
-— C'est une chose trop oubliée, dit le renard. Ça signifie « créer des liens... »
-— Créer des liens ?
-— Bien sûr, dit le renard. Tu n'es encore pour moi qu'un petit garçon tout semblable à cent mille petits garçons. Et je n'ai pas besoin de toi. Et tu n'as pas besoin de moi non plus. Mais, si tu m'apprivoises, nous aurons besoin l'un de l'autre. Tu seras pour moi unique au monde. Je serai pour toi unique au monde...
-
-Voici mon secret. Il est très simple : on ne voit bien qu'avec le cœur. L'essentiel est invisible pour les yeux.
-— L'essentiel est invisible pour les yeux, répéta le petit prince, afin de se souvenir.`
-  },
-  {
-    title: "Python Facile",
-    author: "Jean Dupont",
-    category: "Informatique",
-    year: 2020,
-    copies: 3,
-    cover: "https://images.unsplash.com/photo-1526379095098-d400fd0bf935?w=600&auto=format&fit=crop&q=80",
-    content: `--- Chapitre 1 : Introduction au langage Python ---
-Python est un langage de programmation interprété, interactif, orienté objet et de haut niveau. Créé par Guido van Rossum à la fin des années 1980, il a conquis le monde par sa clarté syntaxique exemplaire.
-
-Pourquoi choisir Python ?
-1. Une lisibilité remarquable proche du pseudo-code.
-2. Une vaste bibliothèque standard (« batteries incluses »).
-3. Un écosystème riche dans la Data Science, l'Intelligence Artificielle et le développement Web.
-
-Pour exécuter votre première instruction, rien de plus simple :
-print("Bonjour, monde !")
-
---- Chapitre 2 : Variables, Conditions et Boucles ---
-Les variables en Python n'exigent aucune déclaration explicite de type. Le typage est dynamique et inféré automatiquement lors de l'assignation :
-
-nom = "Alice"
-age = 24
-est_etudiant = True
-
-Les structures de contrôle utilisent l'indentation comme délimiteur de blocs :
-if age >= 18:
-    print(f"{nom} est majeure.")
-else:
-    print(f"{nom} est mineure.")
-
-Les boucles for parcourent aisément n'importe quelle séquence :
-for i in range(5):
-    print("Itération n°", i)
-
---- Chapitre 3 : Fonctions et Bonnes Pratiques ---
-Une fonction s'écrit avec le mot-clé 'def'. Il est recommandé d'y ajouter des docstrings pour documenter clairement les entrées et sorties :
-
-def calculer_carre(nombre):
-    """Retourne le carré du nombre fourni."""
-    return nombre ** 2
-
-La modularité et la simplicité restent au cœur de la philosophie Python (le fameux Zen de Python).`
-  },
-  {
-    title: "Les Misérables",
-    author: "Victor Hugo",
-    category: "Roman",
-    year: 1862,
-    copies: 4,
-    cover: "https://covers.openlibrary.org/b/id/8231856-L.jpg",
-    content: `--- Chapitre 1 : Un juste — Monseigneur Myriel ---
-En 1815, M. Charles-François-Bienvenu Myriel était évêque de Digne. C'était un vieillard d'environ soixante-quinze ans ; il occupait le siège de Digne depuis 1806.
-
-Quoique ce détail ne touche en aucune manière au fond même de ce que nous avons à raconter, il n'est peut-être pas inutile d'indiquer ici les bruits et les propos qui avaient couru sur son compte au moment où il était arrivé dans le diocèse. Vrai ou faux, ce qu'on dit des hommes tient souvent autant de place dans leur vie et surtout dans leur destinée que ce qu'ils font.
-
-L'évêque vivait dans une pauvreté volontaire, donnant presque la totalité de ses revenus aux indigents, aux malades et aux hôpitaux.
-
---- Chapitre 2 : L'arrivée de Jean Valjean ---
-À l'heure où le soleil se couchait, un homme qui voyageait à pied entra dans la petite ville de Digne. Cet homme était Jean Valjean.
-
-Il portait sur l'épaule un paquetage râpé, un gros bâton noueux à la main. Partout où il frappa pour obtenir du pain ou un toit, on lui ferma la porte au nez sitôt qu'on aperçut son passeport jaune de forçat libéré. Dix-neuf ans de bagne pour avoir volé un pain et tenté de s'évader.
-
-Rejeté par toute la cité, il frappa enfin à la porte de l'Évêché.
-
---- Chapitre 3 : Les chandeliers d'argent ---
-L'évêque l'accueillit avec une infinie douceur :
-— Asseyez-vous, monsieur, et chauffez-vous. Nous allons souper tout à l'heure, et votre lit sera préparé pendant que vous souperez.
-
-Dans la nuit, tourmenté par ses démons et la misère, Jean Valjean s'empara de l'argenterie et s'enfuit. Capturé au matin par les gendarmes, il fut ramené devant Monseigneur Myriel.
-À la stupeur générale, l'évêque déclara :
-— Ah ! vous voilà ! Je suis bien aise de vous voir. Mais quoi ! je vous avais donné les chandeliers aussi, qui sont en argent comme le reste et dont vous pouvez bien avoir deux cents francs. Pourquoi ne les avez-vous pas emportés avec vos couverts ?
-
-Puis, se penchant vers lui :
-— Jean Valjean, mon frère, vous n'appartenez plus au mal, mais au bien. C'est votre âme que je vous achète.`
-  },
-  {
-    title: "Une Brève Histoire du Temps",
-    author: "Stephen Hawking",
-    category: "Science",
-    year: 1988,
-    copies: 2,
-    cover: "https://covers.openlibrary.org/b/id/8306073-L.jpg",
-    content: `--- Chapitre 1 : Notre image de l'Univers ---
-Un scientifique réputé donnait un jour une conférence publique sur l'astronomie. Il décrivait comment la Terre tourne autour du Soleil et comment le Soleil, à son tour, gravite autour du centre d'un vaste rassemblement d'étoiles appelé notre Galaxie.
-
-À la fin de la conférence, une petite vieille dame se leva au fond de la salle et dit :
-— Tout ce que vous venez de raconter, ce sont des bêtises. En réalité, le monde est une assiette plate posée sur le dos d'une tortue géante.
-Le scientifique sourit avec condescendance avant de répliquer :
-— Et sur quoi repose la tortue ?
-— Vous êtes très malin, jeune homme, mais c'est des tortues jusqu'en bas !
-
-Cette anecdote montre à quel point notre conception de l'Univers a évolué depuis les mythes anciens jusqu'aux équations de la relativité générale.
-
---- Chapitre 2 : L'Espace et le Temps selon Einstein ---
-Avant le XXe siècle, on croyait que le temps s'écoulait de manière absolue et universelle, identique pour tout le monde. Albert Einstein a balayé cette illusion.
-
-Le temps et l'espace sont intimement liés au sein d'un tissu à quatre dimensions : l'espace-temps. La gravité n'est pas une simple force invisible agissant à distance, mais la courbure même de cet espace-temps provoquée par la masse et l'énergie des corps célestes.
-
---- Chapitre 3 : Les Trous Noirs et les Mystères Quantiques ---
-Le terme « trou noir » est d'origine récente. Il a été forgé en 1969 par le physicien américain John Wheeler. Il désigne une région de l'espace où la gravitation est si intense que rien, pas même la lumière, ne peut s'en échapper.`
-  },
-  {
-    title: "Sapiens",
-    author: "Yuval Noah Harari",
-    category: "Histoire",
-    year: 2011,
-    copies: 6,
-    cover: "https://covers.openlibrary.org/b/id/12539702-L.jpg",
-    content: `--- Chapitre 1 : Un animal sans importance ---
-Il y a 100 000 ans, la Terre était habitée par au moins six espèces différentes d'hominidés. Aujourd'hui, il n'en reste qu'une seule : Homo sapiens.
-
-Comment une espèce d'animal moyen, vivant dans un coin d'Afrique de l'Est et craignant les grands prédateurs, est-elle devenue le maître incontesté de la planète Terre ?
-
-Trois grandes révolutions ont façonné le cours de cette formidable aventure :
-1. La Révolution cognitive (il y a ~70 000 ans).
-2. La Révolution agricole (il y a ~12 000 ans).
-3. La Révolution scientifique (il y a ~500 ans).
-
---- Chapitre 2 : L'Arbre de la Connaissance et la Fiction ---
-Le véritable super-pouvoir de Sapiens ne réside pas dans sa force musculaire ou sa taille de cerveau, mais dans sa capacité unique à coopérer de manière flexible en très grand nombre.
-
-Et qu'est-ce qui permet cette coopération à grande échelle ? La capacité d'inventer et de croire collectivement à des fictions : les mythes, les dieux, les nations, les lois et l'argent.
-
---- Chapitre 3 : Une journée chez les chasseurs-cueilleurs ---
-Pendant des dizaines de milliers d'années, nos ancêtres ont vécu en petits groupes nomades. Leurs connaissances sur leur environnement naturel étaient prodigieuses. Ils bénéficiaient d'une alimentation diversifiée et travaillaient souvent moins d'heures par jour que l'ouvrier ou le cadre moderne.`
-  },
-  {
-    title: "1984",
-    author: "George Orwell",
-    category: "Science-fiction",
-    year: 1949,
-    copies: 5,
-    cover: "https://covers.openlibrary.org/b/id/12547191-L.jpg",
-    content: `--- Chapitre 1 : Big Brother vous regarde ---
-C'était une journée d'avril froide et claire. Les horloges sonnaient treize heures. Winston Smith, le menton enfoncé dans le cou pour échapper au vent glacial, se glissa rapidement par les portes vitrées des Maisons de la Victoire, bien que pas assez vite pour empêcher un tourbillon de poussière et de gravier d'entrer en même temps que lui.
-
-Le couloir empestait le chou cuit et les vieux paillassons. Au fond, une affiche en couleurs, trop grande pour être déployée à l'intérieur, avait été clouée au mur. Elle représentait simplement un visage énorme, large de plus d'un mètre : le visage d'un homme d'environ quarante-cinq ans, à l'épaisse moustache noire et aux traits vigoureusement séduisants.
-
-Sous le portrait, les mots disaient :
-BIG BROTHER VOUS REGARDE.
-
---- Chapitre 2 : Le journal intime interdit ---
-Dans la pièce, le télécran diffusait sans arrêt une voix métallique détaillant des chiffres de production d'acier. Winston s'assit dans la petite alcôve hors de portée du regard du télécran.
-
-Il ouvrit le carnet qu'il avait acheté dans une boutique clandestine du quartier des prolétaires. Du papier blanc et épais, une relique du passé.
-Tremblant, il trempa la plume dans l'encre et écrivit la date :
-4 avril 1984.
-Écrire un journal intime était puni de mort, ou tout au moins de vingt-cinq ans de camp de travail forcé.
-
---- Chapitre 3 : La Novlangue et la Double-Pensée ---
-« La guerre, c'est la paix.
-La liberté, c'est l'esclavage.
-L'ignorance, c'est la force. »
-Tels étaient les trois slogans inscrits sur la façade étincelante du Ministère de la Vérité.`
-  },
-  {
-    title: "Le Comte de Monte-Cristo",
-    author: "Alexandre Dumas",
-    category: "Roman",
-    year: 1844,
-    copies: 3,
-    cover: "https://covers.openlibrary.org/b/id/8225261-L.jpg",
-    content: `--- Chapitre 1 : L'arrivée à Marseille ---
-Le 24 février 1815, la vigie de Notre-Dame de la Garde signala le trois-mâts le Pharaon, venant de Smyrne, Trieste et Naples.
-
-Un pilote côtier partit aussitôt du port et monta à bord du navire. Edmond Dantès, jeune marin plein d'avenir de dix-neuf ans, se tenait sur le pont, dirigeant les manœuvres d'une voix calme et assurée. Il rapportait le navire à bon port après la mort en mer du capitaine Leclerc.
-
-Le bonheur lui souriait : il allait être nommé capitaine et épouser la belle Mercédès.
-
---- Chapitre 2 : Le complot et l'arrestation ---
-Mais la jalousie rongeait ses ennemis : Danglars qui convoitait son poste, et Fernand Mondego qui aimait Mercédès à la folie. Ensemble, avec l'aide de Gérard de Villefort, ils rédigèrent une lettre de dénonciation calomnieuse accusant Dantès de conspiration bonapartiste.
-
-En plein repas de fiançailles, les gardes firent irruption. Dantès fut arraché aux bras de Mercédès et jeté dans un cachot du redoutable Château d'If.
-
---- Chapitre 3 : Le trésor de l'Abbé Faria ---
-Quatorze années d'enfermement auraient dû anéantir Edmond. Mais dans l'obscurité, il rencontra l'abbé Faria, un savant italien qui lui enseigna les sciences, les langues, l'histoire, et lui transmit le secret du trésor inestimable caché sur l'île déserte de Monte-Cristo.`
-  },
-  {
-    title: "Introduction à l'Algorithmique",
-    author: "Claire Morel",
-    category: "Informatique",
-    year: 2018,
-    copies: 2,
-    cover: "https://images.unsplash.com/photo-1515879218367-8466d910aaa4?w=600&auto=format&fit=crop&q=80",
-    content: `--- Chapitre 1 : Qu'est-ce qu'un algorithme ? ---
-Un algorithme est une suite ordonnée, non ambiguë et finie d'opérations ou d'instructions permettant de résoudre un problème ou d'accomplir une tâche précise à partir de données en entrée.
-
-L'analogie classique est la recette de cuisine : des ingrédients en entrée, des étapes rigoureuses et reproductibles, et un plat savoureux en sortie.
-
-Les trois critères fondamentaux d'un bon algorithme sont :
-1. La correction (il donne le bon résultat).
-2. L'efficacité (il économise le temps de calcul et la mémoire).
-3. La clarté (il est compréhensible et maintenable).
-
---- Chapitre 2 : La complexité et la notation Grand O ---
-Pour mesurer la performance d'un algorithme indépendamment de la puissance de la machine, on étudie sa complexité asymptotique (notée O).
-
-- O(1) : Temps constant (accès direct par clé ou index).
-- O(log n) : Temps logarithmique (recherche dichotomique).
-- O(n) : Temps linéaire (parcours d'une liste).
-- O(n log n) : Tri efficace (Tri fusion, Tri rapide).
-- O(n²) : Temps quadratique (doubles boucles imbriquées).
-
---- Chapitre 3 : Recherche et Tri fondamentaux ---
-La recherche dichotomique permet de trouver un élément dans un tableau trié en divisant l'espace de recherche par deux à chaque étape. Pour 1 million d'éléments, 20 comparaisons suffisent !`
-  },
-  {
-    title: "L'Étranger",
-    author: "Albert Camus",
-    category: "Roman",
-    year: 1942,
-    copies: 4,
-    cover: "https://covers.openlibrary.org/b/id/11188392-L.jpg",
-    content: `--- Chapitre 1 : Aujourd'hui, maman est morte ---
-Aujourd'hui, maman est morte. Ou peut-être hier, je ne sais pas. J'ai reçu un télégramme de l'asile : « Mère décédée. Enterrement demain. Sentiments distingués. » Cela ne veut rien dire. C'était peut-être hier.
-
-L'asile de vieillards est à Marengo, à quatre-vingts kilomètres d'Alger. J'ai pris l'autobus à deux heures. Il faisait très chaud. J'ai mangé au restaurant, chez Céleste, comme d'habitude. Ils avaient tous beaucoup de peine pour moi et Céleste m'a dit : « On n'a qu'une mère. » Quand je suis parti, ils m'ont accompagné à la porte.
-
---- Chapitre 2 : Le soleil d'Alger et la plage ---
-C'était un dimanche d'été éclatant. Avec Marie et Raymond, nous sommes allés sur la plage près d'un cabanon. La lumière écrasait la mer dans un flamboiement de miroir.
-
-Sur le sable brûlant, nous avons aperçu deux Arabes vêtus de bleus de chauffe. La tension est montée dans la moiteur de l'après-midi. La chaleur pesait sur mes épaules comme une chape de plomb.
-
---- Chapitre 3 : L'absurde et la sentence ---
-Tout a vacillé dans l'éclat aveuglant du soleil se reflétant sur la lame d'un couteau. La gâchette a cédé. J'ai compris que j'avais détruit l'équilibre du jour, le silence exceptionnel d'une plage où j'avais été heureux.`
-  },
-  {
-    title: "Dune",
-    author: "Frank Herbert",
-    category: "Science-fiction",
-    year: 1965,
-    copies: 2,
-    cover: "https://covers.openlibrary.org/b/id/11149454-L.jpg",
-    content: `--- Chapitre 1 : L'épreuve du Gom Jabbar ---
-Au début de tout, il y eut cette nuit glacée sur Caladan avant le grand départ pour Arrakis.
-
-La Révérende Mère Gaius Helen Mohiam, vêtue de sa robe d'ombre des Bene Gesserit, ordonna au jeune Paul Atréides d'approcher :
-— Place ta main droite dans cette boîte, jeune homme.
-Paul sentit une terreur primitive monter en lui, mais le regard sévère de sa mère Jessica l'obligea au courage.
-
-La douleur commença comme une brûlure lente, puis devint insoutenable, consumant ses nerfs.
-— Si tu retires ta main, l'aiguille du Gom Jabbar touchera ton cou et la mort sera instantanée. Un animal ronge sa patte pour fuir le piège. Un être humain endure l'épreuve pour dominer son instinct.
-
---- Chapitre 2 : Arrakis, la planète des sables ---
-Arrakis... Dune... Une planète désertique hostile balayée par des tempêtes de Coriolis géantes, où l'eau est la monnaie la plus précieuse et où rôdent les monstrueux vers des sables, Shai-Hulud.
-
-Mais Arrakis est surtout le seul endroit de l'univers connu où l'on récolte l'Épice gériatrique (le Mélange), indispensable aux voyages spatiaux de la Guilde.`
-  },
-  {
-    title: "Histoire de France",
-    author: "Ernest Lavisse",
-    category: "Histoire",
-    year: 1900,
-    copies: 1,
-    cover: "https://covers.openlibrary.org/b/id/9255566-L.jpg",
-    content: `--- Chapitre 1 : Les origines et la Gaule ---
-Autrefois, le pays où nous vivons s'appelait la Gaule et ses habitants étaient les Gaulois.
-
-Les Gaulois étaient grands, vigoureux et braves. Ils aimaient la guerre et les parures éclatantes. Leurs prêtres, les Druides, cueillaient le gui sacré dans les forêts de chênes millénaires. Vercingétorix unit les tribus pour défendre leur terre contre Jules César lors du siège héroïque d'Alésia.
-
---- Chapitre 2 : Des Mérovingiens aux Capétiens ---
-Avec Clovis et le baptême de Reims, un royaume nouveau prend forme. Charlemagne étend son empire d'Occident et organise les écoles. Puis, en 987, Hugues Capet est élu roi, fondant une dynastie qui unifiera patiemment les provinces de France siècle après siècle.
-
---- Chapitre 3 : Le Siècle des Lumières et la République ---
-Au XVIIIe siècle, les idées de Voltaire, Rousseau et Diderot éclairent les esprits. La liberté, l'égalité et la fraternité deviennent les piliers de la modernité.`
-  },
-  {
-    title: "Clean Code",
-    author: "Robert C. Martin",
-    category: "Informatique",
-    year: 2008,
-    copies: 3,
-    cover: "https://covers.openlibrary.org/b/id/10522435-L.jpg",
-    content: `--- Chapitre 1 : Pourquoi le code propre compte ---
-Vous lisez ce livre pour deux raisons. Premièrement, vous êtes programmeur. Deuxièmement, vous voulez devenir un meilleur programmeur.
-
-Le seul véritable moyen de mesurer la qualité d'un code dans une revue d'équipe est le nombre de « WTF par minute ». Un mauvais code ralentit l'équipe, accumule la dette technique et finit par immobiliser des projets entiers. Écrire du code propre est un acte de respect envers vos pairs et votre futur vous-même.
-
---- Chapitre 2 : Nommer les choses avec soin ---
-Les noms doivent révéler l'intention.
-- Choisissez des noms prononçables et faciles à chercher.
-- Évitez les abréviations cryptiques comme 'd' ou 'chk_val'.
-- Préférez 'elapsedTimeInDays' à 'd'.
-- Une classe doit être un nom (ex. Customer, Account), une méthode un verbe (ex. postPayment, deletePage).
-
---- Chapitre 3 : Des fonctions courtes et pures ---
-La première règle des fonctions est qu'elles doivent être courtes. La seconde règle est qu'elles doivent être encore plus courtes.
-Une fonction ne doit faire qu'une seule chose, et elle doit la faire bien.`
-  },
-  {
-    title: "Le Rouge et le Noir",
-    author: "Stendhal",
-    category: "Roman",
-    year: 1830,
-    copies: 3,
-    cover: "https://covers.openlibrary.org/b/id/8235114-L.jpg",
-    content: `--- Chapitre 1 : La petite ville de Verrières ---
-La petite ville de Verrières peut passer pour l'une des plus jolies de la Franche-Comté. Ses maisons blanches avec leurs toits pointus de tuiles rouges s'étendent sur la pente d'une colline, dont des touffes de vigoureux châtaigniers dessinent les moindres sinuosités. Le Doubs coule à quelques centaines de pieds au-dessous de ses fortifications.
-
-C'est là que règne Monsieur de Rênal, maire fier de sa noblesse et soucieux de sa réputation.
-
---- Chapitre 2 : Julien Sorel et l'ambition ---
-Fils d'un modeste scieur de bois, Julien Sorel est un jeune homme timide mais doté d'une intelligence vive et d'une mémoire prodigieuse. Idolâtrant secrètement Napoléon Bonaparte, il rêve d'élévation sociale et refuse le destin médiocre auquel sa naissance le condamnait.`
-  },
-  {
-    title: "Cosmos",
-    author: "Carl Sagan",
-    category: "Science",
-    year: 1980,
-    copies: 2,
-    cover: "https://covers.openlibrary.org/b/id/10398642-L.jpg",
-    content: `--- Chapitre 1 : Les rivages de l'océan cosmique ---
-Le Cosmos est tout ce qui est, tout ce qui a jamais été, et tout ce qui sera jamais.
-
-La simple contemplation du Cosmos nous fait vibrer : nous éprouvons un frisson sacré, une voix douce nous rappelle un lointain souvenir, comme si nous tombions d'une grande hauteur. Nous savons que nous approchons du plus grand des mystères.
-
-Nous sommes faits de poussière d'étoiles. Les atomes de fer dans notre sang, l'oxygène dans nos poumons et le carbone dans nos muscles ont été forgés au cœur d'étoiles massives qui ont explosé il y a des milliards d'années.
-
---- Chapitre 2 : Une planète fragile — Le point bleu pâle ---
-Regardez ce point. C'est ici. C'est notre foyer. C'est nous. Sur ce grain de poussière suspendu dans un rayon de soleil, tous ceux que vous aimez, tous ceux que vous connaissez, chaque être humain qui a jamais vécu a consumé son existence.`
-  },
-  {
-    title: "Harry Potter à l'École des Sorciers",
-    author: "J.K. Rowling",
-    category: "Jeunesse",
-    year: 1997,
-    copies: 7,
-    cover: "https://covers.openlibrary.org/b/id/10521270-L.jpg",
-    content: `--- Chapitre 1 : Le survivant ---
-Mr et Mrs Dursley, qui habitaient au 4, Privet Drive, avaient toujours affirmé avec la plus grande fierté qu'ils étaient parfaitement normaux, merci pour eux. Jamais quiconque n'aurait imaginé qu'ils puissent se trouver impliqués dans quoi que ce soit d'étrange ou de mystérieux. Ils n'avaient pas de temps à perdre avec des sornettes.
-
-Pourtant, cette nuit-là, un chat tigré lisait une carte routière au coin de la rue, et un vieil homme vêtu d'une longue robe violette nommé Albus Dumbledore déposait un panier sur le perron des Dursley.
-
-À l'intérieur reposait un bébé endormi au front marqué d'une fine cicatrice en forme d'éclair.
-
---- Chapitre 2 : La lettre venue de nulle part ---
-Dix ans passèrent. Harry vivait sous l'escalier, maltraité par son cousin Dudley, jusqu'au jour où un hibou majestueux apporta une lettre scellée de cire pourpre portant le blason d'une école de magie : Poudlard.`
-  },
-  {
-    title: "Germinal",
-    author: "Émile Zola",
-    category: "Roman",
-    year: 1885,
-    copies: 3,
-    cover: "https://covers.openlibrary.org/b/id/8235035-L.jpg",
-    content: `--- Chapitre 1 : La plaine sous la nuit noire ---
-Dans la plaine rase, sous la nuit sans étoiles, d'une obscurité et d'une épaisseur d'encre, un homme marchait seul, le long de la grand-route de Marchiennes à Montsou, dix kilomètres de pavé coupant tout droit, à travers les champs de betteraves.
-
-Devant lui, il ne voyait même pas le sol noir, et il n'avait la sensation de l'immense horizon découvert que par les souffles du vent de mars, de grands coups de vent, froids comme des coups de faux, qui balayaient la terre.
-
-Cet homme était Étienne Lantier, mécanicien sans travail chassé de Lille pour avoir giflé son patron.
-
---- Chapitre 2 : La fosse du Voreux ---
-Au loin, des feux rouges perçaient les ténèbres. C'était la fosse du Voreux, monstre de fer et de brique accroupi dans la nuit, avalant des hommes pour nourrir ses chaudières insatiables de charbon.`
-  },
-  {
-    title: "La Physique Quantique pour les Nuls",
-    author: "Sami Boudelal",
-    category: "Science",
-    year: 2015,
-    copies: 1,
-    cover: "https://images.unsplash.com/photo-1635070041078-e363dbe005cb?w=600&auto=format&fit=crop&q=80",
-    content: `--- Chapitre 1 : Le monde étrange de l'infiniment petit ---
-Dans notre monde quotidien, les objets ont des positions nettes et des trajectoires prévisibles. Si vous lancez une balle de tennis, vous pouvez calculer exactement où elle atterrira.
-
-Mais à l'échelle atomique, les règles changent totalement. Une particule peut se comporter à la fois comme une bille solide et comme une vague d'eau (dualité onde-corpuscule).
-
---- Chapitre 2 : Le chat de Schrödinger et la superposition ---
-Tant qu'on ne regarde pas un système quantique, il existe dans une superposition de tous les états possibles à la fois. C'est la fameuse expérience de pensée d'Erwin Schrödinger : le chat dans la boîte est simultanément vivant et mort tant que la boîte reste fermée !`
-  },
-  {
-    title: "Fondation",
-    author: "Isaac Asimov",
-    category: "Science-fiction",
-    year: 1951,
-    copies: 2,
-    cover: "https://covers.openlibrary.org/b/id/12836263-L.jpg",
-    content: `--- Chapitre 1 : Hari Seldon et la Psychohistoire ---
-Hari Seldon était né la quarante-quatrième année de l'Ère Impériale. Il avait créé la Psychohistoire, la science mathématique capable de prédire l'avenir des sociétés humaines à grande échelle.
-
-Ses calculs étaient formels : le glorieux Empire Galactique, vieux de 12 000 ans, allait s'effondrer d'ici trois siècles, suivi par 30 000 ans de barbarie. Pour réduire cette nuit à un seul millénaire, Seldon créa la Fondation aux confins de la Galaxie, sur la planète Terminus.
-
---- Chapitre 2 : Les Encyclopédistes de Terminus ---
-Rassemblés sur ce monde rocheux, les savants avaient pour mission de compiler l'Encyclopedia Galactica, somme de tout le savoir humain pour préserver la flamme de la civilisation.`
-  },
-  {
-    title: "Les Fables",
-    author: "Jean de La Fontaine",
-    category: "Poésie",
-    year: 1668,
-    copies: 4,
-    cover: "https://covers.openlibrary.org/b/id/8231991-L.jpg",
-    content: `--- Fable 1 : La Cigale et la Fourmi ---
-La Cigale, ayant chanté
-Tout l'été,
-Se trouva fort dépourvue
-Quand la bise fut venue.
-Pas un seul petit morceau
-De mouche ou de vermisseau.
-
-Elle alla crier famine
-Chez la Fourmi sa voisine,
-La priant de lui prêter
-Quelque grain pour subsister
-Jusqu'à la saison nouvelle.
-
-La Fourmi n'est pas prêteuse :
-C'est là son moindre défaut.
-« Que faisiez-vous au temps chaud ?
-Dit-elle à cette emprunteuse.
-— Nuit et jour à tout venant,
-Je chantais, ne vous déplaise.
-— Vous chantiez ? J'en suis fort aise.
-Eh bien ! dansez maintenant. »
-
---- Fable 2 : Le Corbeau et le Renard ---
-Maître Corbeau, sur un arbre perché,
-Tenait en son bec un fromage.
-Maître Renard, par l'odeur allché,
-Lui tint à peu près ce langage :
-« Hé ! bonjour, Monsieur du Corbeau.
-Que vous êtes joli ! que vous me semblez beau !
-Sans mentir, si votre ramage
-Se rapporte à votre plumage,
-Vous êtes le Phénix des hôtes de ces bois. »
-
-À ces mots le Corbeau ne se sent pas de joie ;
-Et pour montrer sa belle voix,
-Il ouvre un large bec, laisse tomber sa proie.
-Le Renard s'en saisit, et dit : « Mon bon Monsieur,
-Apprenez que tout flatteur
-Vit aux dépens de celui qui l'écoute :
-Cette leçon vaut bien un fromage, sans doute. »
-Le Corbeau, honteux et confus,
-Jura, mais un peu tard, qu'on ne l'y prendrait plus.`
-  },
-  {
-    title: "Petit Cahier d'Exercices de Confiance en Soi",
-    author: "Charly Cungi",
-    category: "Développement personnel",
-    year: 2013,
-    copies: 2,
-    cover: "https://images.unsplash.com/photo-1499209974431-9dddcece7f88?w=600&auto=format&fit=crop&q=80",
-    content: `--- Chapitre 1 : Les piliers de l'estime de soi ---
-La confiance en soi n'est pas un don inné réservé à quelques privilégiés, mais une compétence psychologique qui se cultive et s'entraîne pas à pas.
-
-Les trois dimensions clés :
-1. L'amour de soi : s'accepter inconditionnellement avec ses forces et ses limites.
-2. La vision de soi : le regard bienveillant que l'on porte sur ses capacités.
-3. La confiance en soi en action : oser agir sans craindre exagérément l'échec.
-
---- Chapitre 2 : Dépasser le syndrome de l'imposteur ---
-Chaque jour, notez 3 petites réussites personnelles. Célébrer les petits pas renforce le sentiment d'auto-efficacité et calme la voix du critique intérieur.`
-  }
-];
-
-/* ---------------------------------------------------------------------
    2) FONCTIONS DE CHARGEMENT & PERSISTANCE
    --------------------------------------------------------------------- */
 
@@ -806,47 +310,6 @@ function colorForCategory(category) {
   return SPINE_COLORS[index];
 }
 
-/** Initialise ou met à jour les données de test */
-function seedDemoData() {
-  books = SEED_BOOKS_DATA.map(item => ({
-    id: generateId(),
-    title: item.title,
-    author: item.author,
-    category: item.category,
-    year: item.year,
-    maxCopies: item.copies,
-    copies: item.copies,
-    cover: item.cover,
-    content: item.content
-  }));
-  saveBooks(books);
-}
-
-/**
- * Migration transparente : si des livres existent déjà mais n'ont pas
- * de couverture ou de contenu textuel, on enrichit automatiquement ceux qui correspondent
- * aux titres de démonstration.
- */
-function upgradeExistingBooksIfNeeded() {
-  let modified = false;
-  books.forEach(b => {
-    const seedMatch = SEED_BOOKS_DATA.find(s => s.title.toLowerCase() === b.title.toLowerCase());
-    if (seedMatch) {
-      if (!b.cover && seedMatch.cover) {
-        b.cover = seedMatch.cover;
-        modified = true;
-      }
-      if (!b.content && seedMatch.content) {
-        b.content = seedMatch.content;
-        modified = true;
-      }
-    }
-  });
-  if (modified) {
-    saveBooks(books);
-  }
-}
-
 /* ---------------------------------------------------------------------
    3) ÉTAT GLOBAL DE L'APPLICATION
    --------------------------------------------------------------------- */
@@ -864,14 +327,6 @@ let personalSort = "recent";
 let activeReadingBook = null;
 let activeChapterIndex = 0;
 let readerChapters = [];
-
-// Chargement initial des livres si vide
-if (books.length === 0) {
-  seedDemoData();
-  books = loadBooks();
-} else {
-  upgradeExistingBooksIfNeeded();
-}
 
 /* ---------------------------------------------------------------------
    4) NAVIGATION
@@ -1040,24 +495,42 @@ function openReader(bookId, targetChapter = null) {
   if (!book) return;
 
   activeReadingBook = book;
-  readerChapters = parseBookChapters(book);
-
   const prog = getBookProgress(book.id);
-  if (targetChapter !== null) {
-    activeChapterIndex = Math.max(0, Math.min(targetChapter, readerChapters.length - 1));
-  } else {
-    activeChapterIndex = Math.max(0, Math.min(prog.chapter || 0, readerChapters.length - 1));
-  }
+  const ct = book.contentType || "text";
 
   readerTitle.textContent = book.title;
-  readerAuthor.textContent = book.author + " (" + book.year + ")";
+  readerAuthor.textContent = book.author + (book.year ? " (" + book.year + ")" : "");
 
   applyReaderSettings();
-  renderTocSidebar();
-  renderActiveChapter();
-
   readerOverlay.hidden = false;
   document.body.style.overflow = "hidden";
+
+  if (ct === "pdf") {
+    openPdfReader(book, prog);
+  } else if (ct === "images") {
+    openImagesReader(book, prog);
+  } else {
+    // Mode texte (par défaut)
+    readerChapters = parseBookChapters(book);
+    if (targetChapter !== null) {
+      activeChapterIndex = Math.max(0, Math.min(targetChapter, readerChapters.length - 1));
+    } else {
+      activeChapterIndex = Math.max(0, Math.min(prog.chapter || 0, readerChapters.length - 1));
+    }
+
+    // S'assurer que les panneaux texte sont visibles
+    document.getElementById("readerScrollArea").hidden = false;
+    document.getElementById("readerPdfArea").hidden = true;
+    document.getElementById("readerImagesArea").hidden = true;
+    document.getElementById("readerTextControls").hidden = false;
+    document.getElementById("readerPageControls").hidden = true;
+    document.getElementById("readerThemeControls").hidden = false;
+    const tocToggle = document.getElementById("readerTocToggle");
+    if (tocToggle) tocToggle.hidden = false;
+
+    renderTocSidebar();
+    renderActiveChapter();
+  }
 }
 
 function closeReader() {
@@ -1088,7 +561,6 @@ function renderActiveChapter() {
 
   document.getElementById("readerPrevChapterBtn").disabled = activeChapterIndex <= 0;
   document.getElementById("readerNextChapterBtn").disabled = activeChapterIndex >= readerChapters.length - 1;
-
   readerScrollArea.scrollTop = 0;
   updateReadingProgressUI();
   renderTocSidebar();
@@ -1098,39 +570,330 @@ function updateReadingProgressUI() {
   if (!activeReadingBook || !readerChapters.length) return;
   const total = readerChapters.length;
   const percent = Math.min(100, Math.round(((activeChapterIndex + 1) / total) * 100));
-
   readerProgressBar.style.width = percent + "%";
   readerFooterInfo.textContent = `Chapitre ${activeChapterIndex + 1} sur ${total} · ${percent}% lu`;
+  // Floating progress indicator
+  const floatEl = document.getElementById("readerFloatingProgress");
+  if (floatEl) {
+    floatEl.textContent = percent + "%";
+    floatEl.classList.add("visible");
+    clearTimeout(floatEl._hideTimer);
+    floatEl._hideTimer = setTimeout(() => floatEl.classList.remove("visible"), 2000);
+  }
 }
 
 function updateProgressAndSave(isFinished = false) {
-  if (!activeReadingBook || !readerChapters.length) return;
-  const total = readerChapters.length;
-  let percent = Math.min(100, Math.round(((activeChapterIndex + 1) / total) * 100));
-  if (isFinished) percent = 100;
+  if (!activeReadingBook) return;
+  const ct = activeReadingBook.contentType || "text";
+  if (ct === "pdf" || ct === "images") {
+    const total = ct === "pdf" ? (_pdfDoc?.numPages || activeReadingBook.pageCount || 1) : _imagesPages.length;
+    let percent = Math.min(100, Math.round((_currentPage / total) * 100));
+    if (isFinished) percent = 100;
+    setBookProgress(activeReadingBook.id, { percent, chapter: _currentPage - 1, isFinished: isFinished || percent === 100 });
+  } else {
+    if (!readerChapters.length) return;
+    const total = readerChapters.length;
+    let percent = Math.min(100, Math.round(((activeChapterIndex + 1) / total) * 100));
+    if (isFinished) percent = 100;
+    setBookProgress(activeReadingBook.id, { percent, chapter: activeChapterIndex, isFinished: isFinished || percent === 100 });
+  }
+}
 
-  setBookProgress(activeReadingBook.id, {
-    percent: percent,
-    chapter: activeChapterIndex,
-    isFinished: isFinished || percent === 100
+// ---------- Mode PDF NATIF ----------
+// Variables de contrôle du rendu
+let _currentRenderTask = null;
+let _isRendering = false;
+
+async function openPdfReader(book, prog) {
+  document.getElementById("readerScrollArea").hidden = true;
+  document.getElementById("readerPdfArea").hidden = false;
+  document.getElementById("readerImagesArea").hidden = true;
+  document.getElementById("readerTextControls").hidden = true;
+  document.getElementById("readerPageControls").hidden = false;
+  document.getElementById("readerThemeControls").hidden = true;
+  document.getElementById("readerTocToggle").hidden = true;
+
+  // Annuler tout rendu en cours
+  if (_currentRenderTask) {
+    try { _currentRenderTask.cancel(); } catch(e) {}
+    _currentRenderTask = null;
+  }
+  _isRendering = false;
+  _pdfDoc = null;
+
+  // Réinitialiser le canvas
+  const canvas = document.getElementById("readerPdfCanvas");
+  if (canvas) {
+    canvas.width = 1;
+    canvas.height = 1;
+    const ctx = canvas.getContext("2d");
+    ctx.clearRect(0, 0, 1, 1);
+  }
+
+  _currentPage = Math.max(1, (prog.chapter || 0) + 1);
+  _pdfZoom = 1.0;
+  updateZoomLabel();
+
+  const totalPages = book.pageCount || 1;
+  document.getElementById("readerPageTotal").textContent = `/ ${totalPages}`;
+  document.getElementById("readerPageInput").max = totalPages;
+  document.getElementById("readerPageInput").value = _currentPage;
+  updatePdfProgressUI(_currentPage, totalPages);
+
+  if (!book.pdfData) {
+    document.getElementById("readerPdfCanvasWrap").innerHTML = `<p class="empty-state">⚠️ Données PDF introuvables.</p>`;
+    return;
+  }
+
+  try {
+    document.getElementById("readerPdfLoading").hidden = false;
+
+    // Conversion base64 → Uint8Array via atob() (méthode fiable, sans fetch)
+    const base64Str = book.pdfData.includes(',') ? book.pdfData.split(",")[1] : book.pdfData;
+    const binaryStr = atob(base64Str);
+    const uint8 = new Uint8Array(binaryStr.length);
+    for (let i = 0; i < binaryStr.length; i++) {
+      uint8[i] = binaryStr.charCodeAt(i);
+    }
+
+    _pdfDoc = await pdfjsLib.getDocument({
+      data: uint8,
+      cMapUrl: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/cmaps/',
+      cMapPacked: true
+    }).promise;
+
+    document.getElementById("readerPdfLoading").hidden = true;
+    document.getElementById("readerPageTotal").textContent = `/ ${_pdfDoc.numPages}`;
+    document.getElementById("readerPageInput").max = _pdfDoc.numPages;
+    await renderPdfPage(_currentPage);
+  } catch (err) {
+    document.getElementById("readerPdfLoading").hidden = true;
+    showToast("Erreur lors de l'ouverture du PDF : " + (err.message || err), "error");
+    console.error("[PDF Lecteur] openPdfReader error:", err);
+  }
+}
+
+async function renderPdfPage(pageNum) {
+  if (!_pdfDoc) return;
+
+  // Annuler le rendu précédent s'il est encore en cours
+  if (_currentRenderTask) {
+    try { _currentRenderTask.cancel(); } catch(e) {}
+    _currentRenderTask = null;
+  }
+  if (_isRendering) {
+    _isRendering = false;
+  }
+
+  document.getElementById("readerPdfLoading").hidden = false;
+  _isRendering = true;
+
+  try {
+    const page = await _pdfDoc.getPage(pageNum);
+    const canvas = document.getElementById("readerPdfCanvas");
+    const ctx = canvas.getContext("2d");
+    const container = document.getElementById("readerPdfArea");
+
+    // Attendre le prochain frame pour s'assurer que le layout est calculé
+    await new Promise(r => requestAnimationFrame(r));
+
+    // Mesurer les dimensions disponibles avec fallback robuste
+    let availW = container.clientWidth - 48;
+    let availH = container.clientHeight - 48;
+
+    // Fallback si le conteneur n'a pas encore de dimensions
+    if (availW <= 0) availW = window.innerWidth * 0.80 - 48;
+    if (availH <= 0) availH = window.innerHeight * 0.75 - 48;
+
+    const raw = page.getViewport({ scale: 1 });
+
+    // Calculer l'échelle pour remplir la zone disponible
+    const scaleW = availW / raw.width;
+    const scaleH = availH / raw.height;
+    const scaleToFit = Math.min(scaleW, scaleH, 2.0);
+
+    // Vérification de sécurité (éviter NaN ou 0)
+    const finalScale = (isFinite(scaleToFit) && scaleToFit > 0) ? scaleToFit * _pdfZoom : _pdfZoom;
+
+    const dpr = window.devicePixelRatio || 1;
+    const viewport = page.getViewport({ scale: finalScale });
+
+    // Dimensions physiques du canvas (haute résolution pour écrans Retina)
+    canvas.width = Math.floor(viewport.width * dpr);
+    canvas.height = Math.floor(viewport.height * dpr);
+
+    // Dimensions CSS du canvas (taille d'affichage réelle)
+    canvas.style.width = Math.floor(viewport.width) + "px";
+    canvas.style.height = Math.floor(viewport.height) + "px";
+
+    // Viewport haute résolution pour PDF.js (méthode officielle pour DPR)
+    const vpHR = page.getViewport({ scale: finalScale * dpr });
+
+    // Lancer le rendu
+    _currentRenderTask = page.render({ canvasContext: ctx, viewport: vpHR });
+    await _currentRenderTask.promise;
+    _currentRenderTask = null;
+    _isRendering = false;
+
+    document.getElementById("readerPdfLoading").hidden = true;
+    _currentPage = pageNum;
+    document.getElementById("readerPageInput").value = pageNum;
+    updatePdfProgressUI(pageNum, _pdfDoc.numPages);
+    updateProgressAndSave();
+  } catch (err) {
+    _currentRenderTask = null;
+    _isRendering = false;
+    document.getElementById("readerPdfLoading").hidden = true;
+    // Ne pas afficher d'erreur si le rendu a été annulé volontairement
+    if (err && err.name !== 'RenderingCancelledException') {
+      console.error("[PDF Lecteur] Erreur rendu page", pageNum, ":", err);
+    }
+  }
+}
+
+function updatePdfProgressUI(page, total) {
+  const pct = Math.min(100, Math.round((page / total) * 100));
+  readerProgressBar.style.width = pct + "%";
+  readerFooterInfo.textContent = `Page ${page} / ${total} · ${pct}% lu`;
+}
+
+function updateZoomLabel() {
+  document.getElementById("readerZoomLabel").textContent = Math.round(_pdfZoom * 100) + "%";
+}
+
+// ---------- Mode IMAGES ----------
+function openImagesReader(book, prog) {
+  document.getElementById("readerScrollArea").hidden = true;
+  document.getElementById("readerPdfArea").hidden = true;
+  document.getElementById("readerImagesArea").hidden = false;
+  document.getElementById("readerTextControls").hidden = true;
+  document.getElementById("readerPageControls").hidden = false;
+  document.getElementById("readerThemeControls").hidden = true;
+  document.getElementById("readerTocToggle").hidden = true;
+
+  // Clear previous image
+  document.getElementById("readerCurrentImage").src = "";
+
+  _imagesPages = book.pages || [];
+  _currentPage = Math.max(1, (prog.chapter || 0) + 1);
+  _pdfZoom = 1.0;
+  updateZoomLabel();
+
+  const total = _imagesPages.length;
+  document.getElementById("readerPageTotal").textContent = `/ ${total}`;
+  document.getElementById("readerPageInput").max = total;
+  renderImagePage(_currentPage);
+}
+
+function renderImagePage(pageNum) {
+  if (!_imagesPages.length) return;
+  _currentPage = Math.max(1, Math.min(pageNum, _imagesPages.length));
+  const img = document.getElementById("readerCurrentImage");
+  img.src = _imagesPages[_currentPage - 1];
+  img.style.transform = `scale(${_pdfZoom})`;
+  img.style.transformOrigin = "top center";
+  document.getElementById("readerPageInput").value = _currentPage;
+  const total = _imagesPages.length;
+  const pct = Math.min(100, Math.round((_currentPage / total) * 100));
+  readerProgressBar.style.width = pct + "%";
+  readerFooterInfo.textContent = `Page ${_currentPage} / ${total} · ${pct}% lu`;
+  updateProgressAndSave();
+}
+
+// ---------- MARQUE-PAGES ----------
+const BOOKMARKS_KEY = "biblio_bookmarks";
+
+function loadBookmarks(bookId) {
+  try { return JSON.parse(localStorage.getItem(BOOKMARKS_KEY) || "{}")[bookId] || []; }
+  catch { return []; }
+}
+
+function saveBookmarks(bookId, marks) {
+  try {
+    const all = JSON.parse(localStorage.getItem(BOOKMARKS_KEY) || "{}");
+    all[bookId] = marks;
+    localStorage.setItem(BOOKMARKS_KEY, JSON.stringify(all));
+  } catch {}
+}
+
+function addBookmark() {
+  if (!activeReadingBook) return;
+  const ct = activeReadingBook.contentType || "text";
+  const page = (ct === "text") ? (activeChapterIndex + 1) : _currentPage;
+  const label = (ct === "text") ? (readerChapters[activeChapterIndex]?.title || `Chapitre ${page}`) : `Page ${page}`;
+  const marks = loadBookmarks(activeReadingBook.id);
+  if (marks.find(m => m.page === page)) { showToast("Marque-page déjà présent.", "info"); return; }
+  marks.push({ page, label });
+  saveBookmarks(activeReadingBook.id, marks);
+  renderBookmarksList();
+  showToast(`🔖 Marque-page : ${label}`, "success");
+}
+
+function renderBookmarksList() {
+  if (!activeReadingBook) return;
+  const marks = loadBookmarks(activeReadingBook.id);
+  const list = document.getElementById("readerBookmarksList");
+  const empty = document.getElementById("readerBookmarksEmpty");
+  empty.hidden = marks.length > 0;
+  list.innerHTML = marks.map((m, idx) => `
+    <li class="reader-toc-item reader-bookmark-item" data-page="${m.page}" data-idx="${idx}">
+      <span>🔖 ${escapeHTML(m.label)}</span>
+      <button class="bookmark-remove-btn" data-idx="${idx}">✕</button>
+    </li>`).join("");
+
+  list.querySelectorAll(".reader-bookmark-item").forEach(li => {
+    li.addEventListener("click", async (e) => {
+      if (e.target.classList.contains("bookmark-remove-btn")) {
+        const i = parseInt(e.target.dataset.idx, 10);
+        const m = loadBookmarks(activeReadingBook.id);
+        m.splice(i, 1);
+        saveBookmarks(activeReadingBook.id, m);
+        renderBookmarksList();
+        return;
+      }
+      const page = parseInt(li.dataset.page, 10);
+      const ct = activeReadingBook.contentType || "text";
+      if (ct === "text") { activeChapterIndex = Math.max(0, page - 1); renderActiveChapter(); }
+      else if (ct === "pdf") await renderPdfPage(page);
+      else if (ct === "images") renderImagePage(page);
+      document.getElementById("readerBookmarksSidebar").hidden = true;
+    });
   });
 }
 
-// Boutons de la liseuse
+// ---------- RECHERCHE ----------
+let _searchMatches = [], _searchCurrentIdx = 0;
+
+function performSearch(query) {
+  const count = document.getElementById("readerSearchCount");
+  const ct = activeReadingBook?.contentType || "text";
+  if (!query.trim() || ct !== "text") { count.textContent = ""; _searchMatches = []; return; }
+  _searchMatches = readerChapters
+    .map((ch, idx) => ({ idx, text: ch.html.replace(/<[^>]+>/g, " ") }))
+    .filter(r => r.text.toLowerCase().includes(query.toLowerCase()))
+    .map(r => r.idx);
+  count.textContent = _searchMatches.length ? `${_searchMatches.length} chapitre(s)` : "Aucun résultat";
+  _searchCurrentIdx = 0;
+  if (_searchMatches.length) navigateSearchResult(0);
+}
+
+function navigateSearchResult(delta) {
+  if (!_searchMatches.length) return;
+  _searchCurrentIdx = (_searchCurrentIdx + delta + _searchMatches.length) % _searchMatches.length;
+  activeChapterIndex = _searchMatches[_searchCurrentIdx];
+  renderActiveChapter();
+  document.getElementById("readerSearchCount").textContent =
+    `${_searchCurrentIdx + 1} / ${_searchMatches.length}`;
+}
+
+// ========== ÉVÉNEMENTS LISEUSE ==========
 document.getElementById("readerCloseBtn").addEventListener("click", closeReader);
+
 document.getElementById("readerPrevChapterBtn").addEventListener("click", () => {
-  if (activeChapterIndex > 0) {
-    activeChapterIndex--;
-    renderActiveChapter();
-    updateProgressAndSave();
-  }
+  if (activeChapterIndex > 0) { activeChapterIndex--; renderActiveChapter(); updateProgressAndSave(); }
 });
 document.getElementById("readerNextChapterBtn").addEventListener("click", () => {
-  if (activeChapterIndex < readerChapters.length - 1) {
-    activeChapterIndex++;
-    renderActiveChapter();
-    updateProgressAndSave();
-  }
+  if (activeChapterIndex < readerChapters.length - 1) { activeChapterIndex++; renderActiveChapter(); updateProgressAndSave(); }
 });
 document.getElementById("readerMarkFinishedBtn").addEventListener("click", () => {
   updateProgressAndSave(true);
@@ -1138,21 +901,73 @@ document.getElementById("readerMarkFinishedBtn").addEventListener("click", () =>
   closeReader();
 });
 document.getElementById("readerResetProgressBtn").addEventListener("click", () => {
-  if (confirm("Voulez-vous réinitialiser votre progression sur ce livre ?")) {
+  if (confirm("Réinitialiser votre progression sur ce livre ?")) {
     setBookProgress(activeReadingBook.id, { percent: 0, chapter: 0, isFinished: false });
-    activeChapterIndex = 0;
-    renderActiveChapter();
+    _currentPage = 1;
+    const ct = activeReadingBook?.contentType || "text";
+    if (ct === "pdf") renderPdfPage(1);
+    else if (ct === "images") renderImagePage(1);
+    else { activeChapterIndex = 0; renderActiveChapter(); }
     showToast("Progression réinitialisée.", "info");
   }
 });
 
+// Navigation par page (PDF/Images)
+document.getElementById("readerPagePrev").addEventListener("click", async () => {
+  if (_currentPage <= 1) return;
+  const ct = activeReadingBook?.contentType;
+  if (ct === "pdf") await renderPdfPage(_currentPage - 1);
+  else if (ct === "images") renderImagePage(_currentPage - 1);
+});
+document.getElementById("readerPageNext").addEventListener("click", async () => {
+  const ct = activeReadingBook?.contentType;
+  const total = ct === "pdf" ? (_pdfDoc?.numPages || 1) : _imagesPages.length;
+  if (_currentPage >= total) return;
+  if (ct === "pdf") await renderPdfPage(_currentPage + 1);
+  else if (ct === "images") renderImagePage(_currentPage + 1);
+});
+document.getElementById("readerPageInput").addEventListener("change", async (e) => {
+  const p = parseInt(e.target.value, 10);
+  if (isNaN(p)) return;
+  const ct = activeReadingBook?.contentType;
+  if (ct === "pdf") await renderPdfPage(p);
+  else if (ct === "images") renderImagePage(p);
+});
+
+// Zoom
+document.getElementById("readerZoomIn").addEventListener("click", async () => {
+  _pdfZoom = Math.min(3.0, _pdfZoom + 0.25); updateZoomLabel();
+  const ct = activeReadingBook?.contentType;
+  if (ct === "pdf") await renderPdfPage(_currentPage);
+  else if (ct === "images") renderImagePage(_currentPage);
+});
+document.getElementById("readerZoomOut").addEventListener("click", async () => {
+  _pdfZoom = Math.max(0.5, _pdfZoom - 0.25); updateZoomLabel();
+  const ct = activeReadingBook?.contentType;
+  if (ct === "pdf") await renderPdfPage(_currentPage);
+  else if (ct === "images") renderImagePage(_currentPage);
+});
+document.getElementById("readerPdfArea").addEventListener("wheel", async (e) => {
+  if (!e.ctrlKey) return;
+  e.preventDefault();
+  _pdfZoom = Math.max(0.5, Math.min(3.0, _pdfZoom + (e.deltaY < 0 ? 0.1 : -0.1)));
+  updateZoomLabel();
+  if (activeReadingBook?.contentType === "pdf") await renderPdfPage(_currentPage);
+}, { passive: false });
+document.getElementById("readerImagesArea").addEventListener("wheel", (e) => {
+  if (!e.ctrlKey) return;
+  e.preventDefault();
+  _pdfZoom = Math.max(0.5, Math.min(3.0, _pdfZoom + (e.deltaY < 0 ? 0.1 : -0.1)));
+  updateZoomLabel();
+  renderImagePage(_currentPage);
+}, { passive: false });
+
 // Sommaire
 document.getElementById("readerTocToggle").addEventListener("click", () => {
   readerTocSidebar.hidden = !readerTocSidebar.hidden;
+  document.getElementById("readerBookmarksSidebar").hidden = true;
 });
-document.getElementById("readerTocClose").addEventListener("click", () => {
-  readerTocSidebar.hidden = true;
-});
+document.getElementById("readerTocClose").addEventListener("click", () => { readerTocSidebar.hidden = true; });
 readerTocList.addEventListener("click", (e) => {
   const item = e.target.closest(".reader-toc-item");
   if (!item) return;
@@ -1162,7 +977,32 @@ readerTocList.addEventListener("click", (e) => {
   if (window.innerWidth < 800) readerTocSidebar.hidden = true;
 });
 
-// Réglages (thème, taille, police)
+// Marque-pages
+document.getElementById("readerBookmarkBtn").addEventListener("click", addBookmark);
+document.getElementById("readerBookmarkListToggle").addEventListener("click", () => {
+  const sb = document.getElementById("readerBookmarksSidebar");
+  sb.hidden = !sb.hidden;
+  if (!sb.hidden) { renderBookmarksList(); readerTocSidebar.hidden = true; }
+});
+document.getElementById("readerBookmarksSidebarClose").addEventListener("click", () => {
+  document.getElementById("readerBookmarksSidebar").hidden = true;
+});
+
+// Recherche
+document.getElementById("readerSearchToggle").addEventListener("click", () => {
+  const bar = document.getElementById("readerSearchBar");
+  bar.hidden = !bar.hidden;
+  if (!bar.hidden) document.getElementById("readerSearchInput").focus();
+});
+document.getElementById("readerSearchClose").addEventListener("click", () => {
+  document.getElementById("readerSearchBar").hidden = true;
+  document.getElementById("readerSearchCount").textContent = "";
+});
+document.getElementById("readerSearchInput").addEventListener("input", (e) => performSearch(e.target.value));
+document.getElementById("readerSearchPrev").addEventListener("click", () => navigateSearchResult(-1));
+document.getElementById("readerSearchNext").addEventListener("click", () => navigateSearchResult(1));
+
+// Thème / police
 document.querySelectorAll(".theme-btn").forEach(btn => {
   btn.addEventListener("click", () => {
     readerSettings.theme = btn.dataset.theme;
@@ -1352,7 +1192,10 @@ function renderPersonalView() {
           ${statusBadgeHTML}
         </div>
         <div class="p-card-body">
-          <h3 class="p-card-title" title="${escapeAttr(b.title)}">${escapeHTML(b.title)}</h3>
+          <h3 class="p-card-title" title="${escapeAttr(b.title)}">
+            ${escapeHTML(b.title)}
+            ${contentTypeBadge(b)}
+          </h3>
           <span class="p-card-author">${escapeHTML(b.author)}</span>
           <span class="p-card-category">${escapeHTML(b.category)}</span>
 
@@ -1434,6 +1277,9 @@ function returnBook(id) {
 const searchInput = document.getElementById("searchInput");
 const sortSelect = document.getElementById("sortSelect");
 
+// Active filter state for the grid view
+let _gridActiveCat = "";
+
 searchInput.addEventListener("input", renderListView);
 sortSelect.addEventListener("change", renderListView);
 
@@ -1472,6 +1318,7 @@ function computeStats() {
 function renderQuickStats() {
   const s = computeStats();
   const el = document.getElementById("quickStats");
+  if (!el) return;
   el.innerHTML = `
     <div class="quick-stat"><b>${s.totalBooks}</b><span>Livres</span></div>
     <div class="quick-stat"><b>${s.availableCopies}</b><span>Dispo.</span></div>
@@ -1482,6 +1329,7 @@ function renderQuickStats() {
 function renderDashboard() {
   const s = computeStats();
   const cardsEl = document.getElementById("dashboardCards");
+  if (!cardsEl) return;
   cardsEl.innerHTML = `
     ${statCardHTML("Nombre total de livres", s.totalBooks, "▤")}
     ${statCardHTML("Nombre total d'exemplaires", s.totalCopies, "≣")}
@@ -1518,7 +1366,7 @@ function renderDashboard() {
         <tr>
           <td>${renderCoverThumbHTML(b)}</td>
           <td><span class="id-chip">${b.id}</span></td>
-          <td><b>${escapeHTML(b.title)}</b></td>
+          <td><b>${escapeHTML(b.title)}</b> ${contentTypeBadge(b)}</td>
           <td>${escapeHTML(b.author)}</td>
           <td>${escapeHTML(b.category)}</td>
           <td>${availabilityBadge(b)}</td>
@@ -1549,53 +1397,261 @@ function availabilityBadge(book) {
     : `<span class="badge unavailable">Indisponible</span>`;
 }
 
+function contentTypeBadge(book) {
+  const ct = book.contentType || "text";
+  if (ct === "pdf") return `<span class="badge" style="background:#e74c3c;color:#fff;">PDF</span>`;
+  if (ct === "images") return `<span class="badge" style="background:#f39c12;color:#fff;">Images</span>`;
+  return `<span class="badge" style="background:#3498db;color:#fff;">Texte</span>`;
+}
+
 /* ---------------------------------------------------------------------
-   14) RENDU — LISTE DES LIVRES (TABLEAU)
+   14) RENDU — LISTE DES LIVRES (GRILLE MODERNISÉE)
    --------------------------------------------------------------------- */
+function getFilteredSortedBooks() {
+  const query = searchInput.value.trim().toLowerCase();
+  let result = books.filter(b => {
+    const matchesQ = !query ||
+      b.title.toLowerCase().includes(query) ||
+      b.author.toLowerCase().includes(query) ||
+      b.category.toLowerCase().includes(query);
+    const matchesCat = !_gridActiveCat || b.category === _gridActiveCat;
+    return matchesQ && matchesCat;
+  });
+
+  const sortMode = sortSelect.value;
+  if (sortMode === "alpha") result.sort((a, b) => a.title.localeCompare(b.title, "fr"));
+  else if (sortMode === "category") result.sort((a, b) => a.category.localeCompare(b.category, "fr"));
+  else if (sortMode === "year") result.sort((a, b) => b.year - a.year);
+  return result;
+}
+
 function renderListView() {
-  const list = getFilteredSortedBooks();
-  const tbody = document.querySelector("#booksTable tbody");
   const emptyState = document.getElementById("listEmptyState");
+  const countEl = document.getElementById("booksResultsCount");
+  const gridView = document.getElementById("booksGridView");
+  const listView = document.getElementById("booksListView");
+  const toggleGrid = document.getElementById("viewToggleGrid");
 
-  tbody.innerHTML = list.map(b => `
-    <tr>
-      <td><span class="mini-spine" style="background:${colorForCategory(b.category)}"></span></td>
-      <td>${renderCoverThumbHTML(b)}</td>
-      <td><span class="id-chip">${b.id}</span></td>
-      <td><b>${escapeHTML(b.title)}</b></td>
-      <td>${escapeHTML(b.author)}</td>
-      <td>${escapeHTML(b.category)}</td>
-      <td>${b.year}</td>
-      <td>${availabilityBadge(b)}</td>
-      <td>
-        <div class="row-actions">
-          <button class="btn btn-primary btn-sm" data-action="read" data-id="${b.id}">📖 Lire</button>
-          <button class="btn btn-success btn-sm" data-action="borrow" data-id="${b.id}">↷ Emprunter</button>
+  // ✅ Bug 2 Fix — Guard si les éléments ne sont pas dans le DOM
+  if (!gridView || !listView || !toggleGrid) return;
+
+  const list = getFilteredSortedBooks();
+  const isGridMode = toggleGrid.classList.contains("active");
+
+  // Category pills
+  const pillsContainer = document.getElementById("booksCategoryPills");
+  if (pillsContainer) {
+    const uniqueCats = [...new Set(books.map(b => b.category).filter(Boolean))].sort();
+    pillsContainer.innerHTML = `<button class="cat-pill ${!_gridActiveCat ? 'active' : ''}" data-cat="">Toutes</button>` +
+      uniqueCats.map(c => `<button class="cat-pill ${_gridActiveCat === c ? 'active' : ''}" data-cat="${escapeAttr(c)}">${escapeHTML(c)}</button>`).join("");
+  }
+
+  if (emptyState) emptyState.hidden = list.length !== 0;
+  if (countEl) countEl.textContent = `${list.length} livre${list.length !== 1 ? 's' : ''} trouvé${list.length !== 1 ? 's' : ''}`;
+
+  if (isGridMode) {
+    gridView.hidden = false;
+    listView.hidden = true;
+    gridView.innerHTML = list.map(b => renderBookGridCard(b)).join("");
+  } else {
+    gridView.hidden = true;
+    listView.hidden = false;
+    listView.innerHTML = list.map(b => renderBookListRow(b)).join("");
+  }
+}
+
+function renderBookGridCard(b) {
+  const spineBg = colorForCategory(b.category);
+  const isAvail = b.copies > 0;
+  const coverHTML = b.cover
+    ? `<img class="bgc-cover-img" src="${escapeAttr(b.cover)}" alt="${escapeAttr(b.title)}" loading="lazy"
+         onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
+       <div class="bgc-fallback" style="background:${spineBg}; display:none;">
+         <div class="bgc-fallback-title">${escapeHTML(b.title)}</div>
+         <div class="bgc-fallback-author">${escapeHTML(b.author)}</div>
+       </div>`
+    : `<div class="bgc-fallback" style="background:${spineBg};">
+         <div class="bgc-fallback-title">${escapeHTML(b.title)}</div>
+         <div class="bgc-fallback-author">${escapeHTML(b.author)}</div>
+       </div>`;
+
+  return `
+    <article class="book-grid-card" role="button" tabindex="0" data-id="${b.id}" aria-label="${escapeAttr(b.title)}">
+      <div class="bgc-cover-wrap">
+        ${coverHTML}
+        <span class="bgc-avail-badge ${isAvail ? 'avail' : 'unavail'}">
+          ${isAvail ? `✓ ${b.copies} dispo.` : 'Indisponible'}
+        </span>
+        <div class="bgc-hover-overlay">
+          <button class="bgc-read-btn" data-action="read" data-id="${b.id}">📖 Lire maintenant</button>
         </div>
-      </td>
-    </tr>
-  `).join("");
-
-  emptyState.hidden = list.length !== 0;
-
-  const categoryList = document.getElementById("categoryList");
-  const uniqueCategories = [...new Set(books.map(b => b.category))];
-  categoryList.innerHTML = uniqueCategories.map(c => `<option value="${escapeHTML(c)}"></option>`).join("");
+      </div>
+      <div class="bgc-info">
+        <div class="bgc-title">${escapeHTML(b.title)}</div>
+        <div class="bgc-author">${escapeHTML(b.author)}</div>
+        <span class="bgc-cat">${escapeHTML(b.category)}</span>
+      </div>
+    </article>`;
 }
 
-document.getElementById("booksTable").addEventListener("click", handleTableAction);
+function renderBookListRow(b) {
+  const spineBg = colorForCategory(b.category);
+  const isAvail = b.copies > 0;
+  const thumbHTML = b.cover
+    ? `<div class="blr-thumb"><img src="${escapeAttr(b.cover)}" alt="" loading="lazy" onerror="this.style.display='none'" /></div>`
+    : `<div class="blr-thumb" style="background:${spineBg}; color:#fff; font-size:11px; font-weight:700;">${escapeHTML(b.title.slice(0,2).toUpperCase())}</div>`;
 
-function handleTableAction(e) {
-  const btn = e.target.closest("button[data-action]");
-  if (!btn) return;
-  const book = books.find(b => b.id === btn.dataset.id);
+  return `
+    <div class="book-list-row" data-id="${b.id}">
+      ${thumbHTML}
+      <div class="blr-info">
+        <div class="blr-title">${escapeHTML(b.title)} ${contentTypeBadge(b)}</div>
+        <div class="blr-author">${escapeHTML(b.author)}</div>
+        <div class="blr-meta">
+          <span class="bgc-cat">${escapeHTML(b.category)}</span>
+          <span class="bgc-cat">${b.year || '—'}</span>
+          <span class="bgc-avail-badge ${isAvail ? 'avail' : 'unavail'}" style="position:static;">${isAvail ? `Disponible (${b.copies}/${b.maxCopies})` : 'Indisponible'}</span>
+        </div>
+      </div>
+      <div class="blr-actions">
+        <button class="btn btn-primary btn-sm" data-action="read" data-id="${b.id}">📖 Lire</button>
+        <button class="btn btn-outline btn-sm" data-action="detail" data-id="${b.id}">Détail</button>
+      </div>
+    </div>`;
+}
+
+// Délégation d'événements grille
+document.getElementById("booksGridView").addEventListener("click", handleGridAction);
+document.getElementById("booksGridView").addEventListener("keydown", (e) => {
+  if (e.key === "Enter" || e.key === " ") {
+    const card = e.target.closest(".book-grid-card");
+    if (card && !e.target.closest("button")) { e.preventDefault(); openBookDetail(card.dataset.id); }
+  }
+});
+document.getElementById("booksListView").addEventListener("click", handleGridAction);
+
+function handleGridAction(e) {
+  const btnRead = e.target.closest("button[data-action='read']");
+  if (btnRead) { e.stopPropagation(); openReader(btnRead.dataset.id); return; }
+
+  const btnDetail = e.target.closest("button[data-action='detail']");
+  if (btnDetail) { e.stopPropagation(); openBookDetail(btnDetail.dataset.id); return; }
+
+  const card = e.target.closest(".book-grid-card");
+  if (card && !e.target.closest("button")) { openBookDetail(card.dataset.id); return; }
+
+  const row = e.target.closest(".book-list-row");
+  if (row && !e.target.closest("button")) { openBookDetail(row.dataset.id); }
+}
+
+// Filtres catégories pills
+document.getElementById("booksCategoryPills").addEventListener("click", (e) => {
+  const pill = e.target.closest(".cat-pill");
+  if (!pill) return;
+  _gridActiveCat = pill.dataset.cat;
+  renderListView();
+});
+
+// Toggle grille / liste
+document.getElementById("viewToggleGrid").addEventListener("click", () => {
+  document.getElementById("viewToggleGrid").classList.add("active");
+  document.getElementById("viewToggleList").classList.remove("active");
+  renderListView();
+});
+document.getElementById("viewToggleList").addEventListener("click", () => {
+  document.getElementById("viewToggleList").classList.add("active");
+  document.getElementById("viewToggleGrid").classList.remove("active");
+  renderListView();
+});
+
+/* ---------------------------------------------------------------------
+   14b) PANNEAU DÉTAIL LIVRE (slide-in)
+   --------------------------------------------------------------------- */
+let _detailBookId = null;
+
+function openBookDetail(bookId) {
+  const book = books.find(b => b.id === bookId);
   if (!book) return;
+  _detailBookId = bookId;
 
-  if (btn.dataset.action === "read") openReader(book.id);
-  if (btn.dataset.action === "edit") enterEditMode(book);
-  if (btn.dataset.action === "delete") askDeleteConfirmation(book);
-  if (btn.dataset.action === "borrow") borrowBook(book.id);
+  const overlay = document.getElementById("bookDetailOverlay");
+  const panel = document.getElementById("bookDetailPanel");
+  const spineBg = colorForCategory(book.category);
+
+  // Hero background
+  document.getElementById("bdpHeroBg").style.backgroundImage =
+    book.cover ? `url('${escapeAttr(book.cover)}')` : `linear-gradient(135deg, ${spineBg}, #0e1916)`;
+
+  // Cover
+  const coverWrap = document.getElementById("bdpCoverWrap");
+  if (book.cover) {
+    coverWrap.innerHTML = `<img class="bdp-cover" src="${escapeAttr(book.cover)}" alt="${escapeAttr(book.title)}"
+      onerror="this.style.display='none'; document.getElementById('bdpCoverWrap').innerHTML=getFallbackCoverHtml('${escapeAttr(spineBg)}', '${escapeAttr(book.title.slice(0,2).toUpperCase())}');" />`;
+  } else {
+    coverWrap.innerHTML = `<div class="bdp-cover-fallback" style="background:${spineBg};">
+      <div style="font-size:26px;opacity:0.7;">📖</div>
+      <div style="font-family:var(--font-display);font-size:13px;font-weight:700;line-height:1.2;">${escapeHTML(book.title)}</div>
+    </div>`;
+  }
+
+  // Title / author
+  document.getElementById("bdpTitle").textContent = book.title;
+  document.getElementById("bdpAuthor").textContent = book.author;
+
+  // Badges
+  const badges = document.getElementById("bdpBadges");
+  badges.innerHTML = `
+    ${book.category ? `<span class="bdp-badge cat">${escapeHTML(book.category)}</span>` : ''}
+    ${book.year ? `<span class="bdp-badge year">${book.year}</span>` : ''}
+    <span class="bdp-badge" style="background:${book.copies > 0 ? 'rgba(62,125,81,0.75)' : 'rgba(174,59,59,0.75)'}">
+      ${book.copies > 0 ? `✓ ${book.copies}/${book.maxCopies} dispo.` : 'Indisponible'}
+    </span>`;
+
+  // Méta-données
+  document.getElementById("bdpMetaGrid").innerHTML = `
+    <div class="bdp-meta-item"><span class="bdp-meta-val">${book.year || '—'}</span><span class="bdp-meta-label">Année</span></div>
+    <div class="bdp-meta-item"><span class="bdp-meta-val">${book.maxCopies || 1}</span><span class="bdp-meta-label">Exemplaires</span></div>
+    <div class="bdp-meta-item"><span class="bdp-meta-val">${book.copies}</span><span class="bdp-meta-label">Disponibles</span></div>`;
+
+  // Description
+  let description = book.description || '';
+  if (!description && book.content) {
+    // Extraire le premier paragraphe du contenu comme description
+    const firstPara = book.content.replace(/^---[^\n]*---/m, '').trim().split(/\n\s*\n/)[0];
+    description = firstPara ? firstPara.replace(/\n/g, ' ').trim().slice(0, 300) + (firstPara.length > 300 ? '…' : '') : '';
+  }
+  document.getElementById("bdpDescription").textContent = description || 'Aucune description disponible pour cet ouvrage.';
+
+  // Bouton lire
+  const readBtn = document.getElementById("bdpReadBtn");
+  const hasContent = !!(book.content || book.pdfData || (book.pages && book.pages.length));
+  readBtn.disabled = !hasContent;
+  readBtn.title = hasContent ? '' : 'Aucun contenu disponible pour cet ouvrage';
+  readBtn.onclick = () => { closeBookDetail(); openReader(bookId); };
+
+  // Bouton emprunter
+  const borrowBtn = document.getElementById("bdpBorrowBtn");
+  borrowBtn.disabled = book.copies <= 0;
+  borrowBtn.textContent = book.copies > 0 ? '↷ Emprunter ce livre' : '✕ Indisponible';
+  borrowBtn.onclick = () => { borrowBook(bookId); closeBookDetail(); showToast(`« ${book.title} » emprunté.`, 'success'); };
+
+  overlay.hidden = false;
+  panel.hidden = false;
+  document.body.style.overflow = 'hidden';
 }
+
+function closeBookDetail() {
+  document.getElementById("bookDetailOverlay").hidden = true;
+  document.getElementById("bookDetailPanel").hidden = true;
+  document.body.style.overflow = '';
+  _detailBookId = null;
+}
+
+document.getElementById("bdpCloseBtn").addEventListener("click", closeBookDetail);
+document.getElementById("bookDetailOverlay").addEventListener("click", closeBookDetail);
+window.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && !document.getElementById("bookDetailPanel").hidden) closeBookDetail();
+});
 
 /* ---------------------------------------------------------------------
    15) RENDU — EMPRUNTER / RETOURNER (CARTES)

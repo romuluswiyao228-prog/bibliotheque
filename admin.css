@@ -580,3 +580,604 @@
   align-items: center;
   margin-bottom: 6px;
 }
+
+.field-head-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* =========================================================================
+   SYSTÈME À 3 ONGLETS — AJOUT DE LIVRES
+   ========================================================================= */
+
+.add-book-tabs-nav {
+  display: flex;
+  border-bottom: 2px solid var(--color-border, #E6DFCC);
+  margin-bottom: 28px;
+  gap: 0;
+  overflow-x: auto;
+}
+
+.add-book-tab-btn {
+  background: transparent;
+  border: none;
+  border-bottom: 3px solid transparent;
+  margin-bottom: -2px;
+  padding: 12px 22px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text-muted, #746B5C);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: color 0.15s ease, border-color 0.15s ease;
+  white-space: nowrap;
+}
+
+.add-book-tab-btn:hover {
+  color: var(--color-primary, #1F3A34);
+}
+
+.add-book-tab-btn.active {
+  color: var(--color-primary, #1F3A34);
+  border-bottom-color: var(--color-accent, #B8874A);
+}
+
+.add-book-tab-icon {
+  font-size: 18px;
+  line-height: 1;
+}
+
+.add-book-tab-panel {
+  display: none;
+}
+.add-book-tab-panel.active {
+  display: block;
+  animation: fadeInTab 0.22s ease;
+}
+
+@keyframes fadeInTab {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Formulaire manuel enrichi */
+.add-manual-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 18px 20px;
+}
+
+.field-isbn-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-end;
+}
+
+.field-isbn-row input {
+  flex: 1;
+}
+
+.isbn-auto-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: #D4EDDA;
+  color: #1A5C2A;
+  border: 1px solid #B8D8C2;
+  border-radius: 100px;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  margin-top: 4px;
+}
+
+/* =========================================================================
+   DRAG & DROP CSV / EXCEL
+   ========================================================================= */
+
+.csv-drop-zone {
+  border: 2px dashed var(--color-border, #E6DFCC);
+  border-radius: 14px;
+  padding: 40px 30px;
+  text-align: center;
+  background: var(--color-surface-alt, #FBF8F1);
+  cursor: pointer;
+  transition: border-color 0.2s ease, background 0.2s ease;
+  position: relative;
+}
+
+.csv-drop-zone:hover,
+.csv-drop-zone.dragover {
+  border-color: var(--color-accent, #B8874A);
+  background: #FBF5EC;
+}
+
+.csv-drop-icon {
+  font-size: 40px;
+  margin-bottom: 12px;
+  opacity: 0.8;
+}
+
+.csv-drop-text strong {
+  display: block;
+  font-size: 15px;
+  color: var(--color-primary-dark, #142722);
+  margin-bottom: 5px;
+}
+
+.csv-drop-text span {
+  font-size: 13px;
+  color: var(--color-text-muted, #746B5C);
+  display: block;
+  margin-bottom: 8px;
+}
+
+.csv-drop-text small {
+  font-size: 12px;
+  color: #A09689;
+}
+
+.csv-options-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+  margin: 20px 0;
+  padding: 16px 20px;
+  background: var(--color-surface-alt, #FBF8F1);
+  border-radius: 10px;
+  border: 1px solid var(--color-border, #E6DFCC);
+}
+
+.csv-option-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13.5px;
+  color: var(--color-text, #241F19);
+  cursor: pointer;
+}
+
+.csv-option-check input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--color-primary, #1F3A34);
+}
+
+.csv-template-btn-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+/* Prévisualisation CSV */
+.csv-preview-section {
+  margin-top: 22px;
+  border: 1px solid var(--color-border, #E6DFCC);
+  border-radius: 10px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.csv-preview-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 18px;
+  background: var(--color-surface-alt, #FBF8F1);
+  border-bottom: 1px solid var(--color-border, #E6DFCC);
+}
+
+.csv-preview-header h4 {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--color-primary-dark, #142722);
+  margin: 0;
+}
+
+.csv-preview-wrap {
+  overflow-x: auto;
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.csv-preview-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+
+.csv-preview-table th {
+  background: var(--color-surface-alt, #FBF8F1);
+  padding: 8px 12px;
+  text-align: left;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text-muted, #746B5C);
+  border-bottom: 1px solid var(--color-border, #E6DFCC);
+  white-space: nowrap;
+}
+
+.csv-preview-table td {
+  padding: 7px 12px;
+  border-bottom: 1px solid rgba(230,223,204,0.5);
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.csv-preview-table tr.error-row td {
+  background: #FEF2F2;
+  color: #AE3B3B;
+}
+
+.csv-col-mapping {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 14px 18px;
+  border-top: 1px solid var(--color-border, #E6DFCC);
+  background: var(--color-surface-alt, #FBF8F1);
+}
+
+.csv-map-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+}
+
+.csv-map-item label {
+  font-weight: 600;
+  color: var(--color-primary-dark, #142722);
+  white-space: nowrap;
+}
+
+.csv-map-item select {
+  padding: 4px 8px;
+  border: 1px solid var(--color-border, #E6DFCC);
+  border-radius: 6px;
+  font-size: 12px;
+  background: #fff;
+}
+
+.csv-import-actions {
+  padding: 14px 18px;
+  display: flex;
+  gap: 10px;
+  border-top: 1px solid var(--color-border, #E6DFCC);
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+/* =========================================================================
+   RECHERCHE PAR ISBN
+   ========================================================================= */
+
+.isbn-search-bar {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 20px;
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+
+.isbn-search-bar input {
+  flex: 1;
+  min-width: 200px;
+  padding: 11px 16px;
+  border: 1px solid var(--color-border, #E6DFCC);
+  border-radius: var(--radius-sm, 8px);
+  font-family: var(--font-mono, 'JetBrains Mono', monospace);
+  font-size: 15px;
+  letter-spacing: 0.04em;
+  transition: border-color 0.15s;
+}
+
+.isbn-search-bar input:focus {
+  outline: none;
+  border-color: var(--color-accent, #B8874A);
+  box-shadow: 0 0 0 3px rgba(184,135,74,0.12);
+}
+
+.isbn-search-bar input::placeholder {
+  font-family: var(--font-body, 'Inter', sans-serif);
+  letter-spacing: 0;
+  color: #A09689;
+}
+
+.isbn-search-btn {
+  background: var(--color-primary, #1F3A34);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-sm, 8px);
+  padding: 11px 20px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s;
+  white-space: nowrap;
+}
+
+.isbn-search-btn:hover { background: #2E5148; }
+
+.isbn-multi-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.isbn-multi-input {
+  flex: 1;
+  min-width: 180px;
+  padding: 9px 14px;
+  border: 1px solid var(--color-border, #E6DFCC);
+  border-radius: 8px;
+  font-size: 13px;
+  font-family: var(--font-mono, monospace);
+  letter-spacing: 0.03em;
+}
+
+.isbn-hint {
+  font-size: 12px;
+  color: var(--color-text-muted, #746B5C);
+  margin-bottom: 18px;
+}
+
+.isbn-results-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.isbn-result-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 18px;
+  background: var(--color-surface-alt, #FBF8F1);
+  border: 1px solid var(--color-border, #E6DFCC);
+  border-radius: 10px;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.isbn-result-card:hover {
+  border-color: var(--color-accent, #B8874A);
+  box-shadow: 0 2px 8px rgba(184,135,74,0.1);
+}
+
+.isbn-result-cover {
+  width: 48px;
+  height: 68px;
+  border-radius: 4px;
+  object-fit: cover;
+  border: 1px solid var(--color-border, #E6DFCC);
+  flex-shrink: 0;
+  background: #EAE3D2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  overflow: hidden;
+}
+
+.isbn-result-cover img {
+  width: 100%; height: 100%; object-fit: cover;
+}
+
+.isbn-result-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.isbn-result-info strong {
+  display: block;
+  font-size: 14.5px;
+  color: var(--color-primary-dark, #142722);
+  margin-bottom: 3px;
+}
+
+.isbn-result-info span {
+  font-size: 12.5px;
+  color: var(--color-text-muted, #746B5C);
+  display: block;
+}
+
+.isbn-result-badge {
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 100px;
+  margin-top: 5px;
+  display: inline-block;
+}
+
+.isbn-result-badge.exists {
+  background: #D4EDDA;
+  color: #1A5C2A;
+}
+
+.isbn-result-badge.new {
+  background: #E3EEE2;
+  color: #3E7D51;
+}
+
+.isbn-result-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+/* Spinner chargement ISBN */
+.isbn-loading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 20px;
+  color: var(--color-text-muted, #746B5C);
+  font-size: 14px;
+}
+
+.isbn-spinner {
+  width: 22px;
+  height: 22px;
+  border: 3px solid var(--color-border, #E6DFCC);
+  border-top-color: var(--color-primary, #1F3A34);
+  border-radius: 50%;
+  animation: pdfSpin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+
+/* =========================================================================
+   MODALE DE RÉSOLUTION DE DOUBLONS
+   ========================================================================= */
+
+.duplicate-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(14, 25, 22, 0.6);
+  backdrop-filter: blur(4px);
+  display: grid;
+  place-items: center;
+  z-index: 200;
+  padding: 20px;
+  animation: fadeIn 0.18s ease;
+}
+
+.duplicate-modal-overlay[hidden] { display: none; }
+
+.duplicate-modal {
+  background: var(--color-surface, #FFF);
+  border-radius: 16px;
+  width: 100%;
+  max-width: 540px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.25);
+  overflow: hidden;
+}
+
+.duplicate-modal-header {
+  background: linear-gradient(135deg, #1F3A34, #2c5548);
+  padding: 22px 24px;
+  color: #fff;
+}
+
+.duplicate-modal-header h3 {
+  color: #fff;
+  font-size: 18px;
+  margin-bottom: 4px;
+}
+
+.duplicate-modal-header p {
+  color: rgba(255,255,255,0.75);
+  font-size: 13px;
+}
+
+.duplicate-modal-body {
+  padding: 24px;
+}
+
+.duplicate-diff-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  margin-bottom: 20px;
+}
+
+.duplicate-diff-table th {
+  text-align: left;
+  padding: 8px 12px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-muted, #746B5C);
+  background: var(--color-surface-alt, #FBF8F1);
+  border-bottom: 1px solid var(--color-border, #E6DFCC);
+}
+
+.duplicate-diff-table td {
+  padding: 9px 12px;
+  border-bottom: 1px solid rgba(230,223,204,0.5);
+  vertical-align: top;
+}
+
+.diff-field-name {
+  font-weight: 700;
+  color: var(--color-primary-dark, #142722);
+  width: 100px;
+}
+
+.diff-old-val {
+  color: var(--color-text-muted, #746B5C);
+  text-decoration: line-through;
+}
+
+.diff-new-val {
+  color: var(--color-primary, #1F3A34);
+  font-weight: 600;
+}
+
+.duplicate-modal-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.btn-dup-update {
+  background: var(--color-primary, #1F3A34);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 13px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.btn-dup-update:hover { background: #2E5148; }
+
+.btn-dup-new {
+  background: transparent;
+  color: var(--color-primary, #1F3A34);
+  border: 1px solid var(--color-border, #E6DFCC);
+  border-radius: 8px;
+  padding: 11px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.btn-dup-new:hover {
+  border-color: var(--color-primary, #1F3A34);
+  background: var(--color-surface-alt, #FBF8F1);
+}
+
+.btn-dup-cancel {
+  background: transparent;
+  color: var(--color-text-muted, #746B5C);
+  border: none;
+  font-size: 13px;
+  cursor: pointer;
+  text-decoration: underline;
+  padding: 6px;
+}
+
+/* =========================================================================
+   RESPONSIVE ADMIN ONGLETS
+   ========================================================================= */
+@media (max-width: 700px) {
+  .add-manual-grid { grid-template-columns: 1fr; }
+  .isbn-search-bar { flex-direction: column; }
+  .isbn-search-bar input, .isbn-search-btn { width: 100%; }
+  .add-book-tab-btn { padding: 10px 14px; font-size: 13px; }
+}
