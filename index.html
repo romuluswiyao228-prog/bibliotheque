@@ -15,6 +15,14 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
+  <!-- Supabase SDK + configuration du projet -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="supabase-config.js"></script>
+
+  <!-- Préchargement anticipé : worker pdf.js + CDN -->
+  <link rel="preload" href="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js" as="script" />
+  <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin />
+
   <!-- pdf.js pour le rendu natif des livres PDF dans la liseuse -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <script>
@@ -51,6 +59,7 @@
       </div>
 
       <nav class="nav" id="mainNav">
+        <span class="nav-indicator" aria-hidden="true"></span>
         <button class="nav-btn active" data-view="dashboard">
           <span class="nav-ico">⌂</span> Tableau de bord
         </button>
@@ -111,6 +120,16 @@
             <div class="resume-progress"><div id="resumeProgressBar" class="progress-fill"></div></div>
           </div>
           <button class="btn btn-primary btn-lg" id="resumeReadingBtn">Reprendre la lecture ➔</button>
+        </div>
+
+        <!-- Carrousel 3D des derniers livres ajoutés -->
+        <div class="carousel-section" id="carouselSection" hidden>
+          <div class="carousel-viewport">
+            <div class="carousel-stage" id="carouselStage" tabindex="0" role="region"
+                 aria-label="Carrousel des derniers livres — glissez ou utilisez les flèches gauche et droite"></div>
+          </div>
+          <div class="carousel-grid" id="carouselGrid" hidden></div>
+          <p class="carousel-hint">Glissez pour explorer · Cliquez sur une couverture pour voir le détail</p>
         </div>
 
         <div class="panel">

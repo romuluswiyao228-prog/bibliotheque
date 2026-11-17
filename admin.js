@@ -73,6 +73,8 @@ document.addEventListener("DOMContentLoaded", () => {
   checkAdminAuth();
   initNav();
   initBookForm();
+  initPdfBatchImport();
+  initEditModal();
   initAdvancedImports();
   initContentEditor();
   initManageBooks();
@@ -80,14 +82,32 @@ document.addEventListener("DOMContentLoaded", () => {
   initImportExport();
 });
 
-function checkAdminAuth() {
-  const isAuth = sessionStorage.getItem(ADMIN_SESSION_KEY) === "true";
+function isSupabaseConfigured() {
+  return !!(window.SUPABASE_URL && window.SUPABASE_ANON_KEY &&
+    !window.SUPABASE_URL.includes("VOTRE") && !window.SUPABASE_ANON_KEY.includes("VOTRE") &&
+    window.supabase && window.supabase.createClient);
+}
+
+async function checkAdminAuth() {
+  let isAuth = sessionStorage.getItem(ADMIN_SESSION_KEY) === "true";
+
+  // Mode Supabase : vérifier que la session Auth est toujours valide
+  if (isAuth && isSupabaseConfigured() && supabaseClient) {
+    const { data } = await supabaseClient.auth.getSession();
+    if (!data.session) {
+      sessionStorage.removeItem(ADMIN_SESSION_KEY);
+      isAuth = false;
+    }
+  }
+
   const lockScreen = document.getElementById("adminLockScreen");
   const adminApp = document.getElementById("adminApp");
 
   if (isAuth) {
     if (lockScreen) lockScreen.style.display = "none";
     if (adminApp) adminApp.style.display = "grid";
+    const clock = document.getElementById("adminClock");
+    if (clock) clock.textContent = "Connecté à " + new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
     renderAllAdminViews();
   } else {
     if (lockScreen) lockScreen.style.display = "grid";
@@ -97,11 +117,47 @@ function checkAdminAuth() {
 }
 
 // Formulaire de déverrouillage
-document.getElementById("adminLockForm")?.addEventListener("submit", (e) => {
+const _useSupabaseAuth = isSupabaseConfigured();
+document.getElementById("adminLockForm")?.addEventListener("submit", async (e) => {
   e.preventDefault();
   const input = document.getElementById("adminPasscode");
+  const emailInput = document.getElementById("adminEmail");
   const err = document.getElementById("adminPasscodeError");
+  const btn = document.getElementById("adminLoginBtn");
 
+  if (_useSupabaseAuth) {
+    // Authentification Supabase Auth (email + mot de passe du compte admin)
+    const email = (emailInput?.value || "").trim();
+    const password = input.value;
+    if (!email || !password) {
+      err.textContent = "❌ Email et mot de passe requis.";
+      return;
+    }
+    if (!supabaseClient) {
+      err.textContent = "❌ Connexion Supabase non initialisée.";
+      return;
+    }
+    btn.disabled = true;
+    btn.textContent = "⏳ Connexion…";
+    try {
+      const { error } = await supabaseClient.auth.signInWithPassword({ email, password });
+      if (error) throw error;
+      sessionStorage.setItem(ADMIN_SESSION_KEY, "true");
+      err.textContent = "";
+      input.value = "";
+      checkAdminAuth();
+      showToast("Bienvenue dans le portail Administrateur ⚙️", "success");
+    } catch (authErr) {
+      err.textContent = "❌ " + (authErr.message || "Authentification refusée.");
+      input.select();
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "🔓 Déverrouiller l'espace Admin";
+    }
+    return;
+  }
+
+  // Mode local (sans Supabase) : mot de passe historique
   if (input.value === ADMIN_PASSWORD) {
     sessionStorage.setItem(ADMIN_SESSION_KEY, "true");
     err.textContent = "";
@@ -117,6 +173,7 @@ document.getElementById("adminLockForm")?.addEventListener("submit", (e) => {
 // Bouton déconnexion
 document.getElementById("adminExitBtn")?.addEventListener("click", () => {
   sessionStorage.removeItem(ADMIN_SESSION_KEY);
+  if (_useSupabaseAuth && supabaseClient) supabaseClient.auth.signOut();
   checkAdminAuth();
   showToast("Session administrateur fermée.", "info");
 });
@@ -176,7 +233,11 @@ function renderDashboardView() {
   books = loadBooks();
   const totalBooks = books.length;
   const totalCopies = books.reduce((s, b) => s + (parseInt(b.maxCopies, 10) || 1), 0);
-  const withContent = books.filter(b => b.content && b.content.trim()).length;
+  const hasReadableContent = (b) => {
+    const ct = b.contentType || "text";
+    return ct === "pdf" ? !!(b.pdfData || b.pdfUrl) : ct === "images" ? !!(b.pages && b.pages.length) : !!(b.content && b.content.trim());
+  };
+  const withContent = books.filter(hasReadableContent).length;
   const withoutContent = totalBooks - withContent;
 
   const cardsContainer = document.getElementById("adminDashboardCards");
@@ -199,7 +260,7 @@ function renderDashboardView() {
       </div>
       <div class="stat-card">
         <div class="stat-icon">⚠️</div>
-        <div class="stat-label">Sans contenu texte</div>
+        <div class="stat-label">Sans contenu</div>
         <div class="stat-value">${withoutContent}</div>
       </div>
     `;
@@ -211,10 +272,12 @@ function renderDashboardView() {
     const recents = books.slice(-6).reverse();
     tbody.innerHTML = recents.length
       ? recents.map(b => {
-          const hasC = !!(b.content && b.content.trim());
+          const ct = b.contentType || "text";
+          const hasC = ct === "pdf" ? !!(b.pdfData || b.pdfUrl) : ct === "images" ? !!(b.pages && b.pages.length) : !!(b.content && b.content.trim());
+          const contentLabel = ct === "pdf" ? "✓ PDF" : ct === "images" ? "✓ Images" : "✓ Texte OK";
           const thumb = b.cover
             ? `<img src="${escapeAttr(b.cover)}" alt="" style="width:34px;height:46px;object-fit:cover;border-radius:3px;" />`
-            : `<div style="width:34px;height:46px;background:${colorForCategory(b.category)};border-radius:3px;display:grid;place-items:center;color:#fff;font-size:11px;font-weight:700;">${escapeHTML(b.title.slice(0,2))}</div>`;
+            : `<div style="width:34px;height:46px;background:${colorForCategory(b.category)};border-radius:3px;display:grid;place-items:center;color:#fff;font-size:11px;font-weight:700;">${escapeHTML((b.title || "").slice(0,2))}</div>`;
           return `
             <tr>
               <td>${thumb}</td>
@@ -222,9 +285,9 @@ function renderDashboardView() {
               <td><b>${escapeHTML(b.title)}</b></td>
               <td>${escapeHTML(b.author)}</td>
               <td>${escapeHTML(b.category)}</td>
-              <td><span class="admin-content-badge ${hasC ? 'ok' : 'missing'}">${hasC ? '✓ Texte OK' : '⚠ Vide'}</span></td>
+              <td><span class="admin-content-badge ${hasC ? 'ok' : 'missing'}">${hasC ? contentLabel : '⚠ Vide'}</span></td>
               <td>
-                <button class="btn btn-outline btn-sm" onclick="openContentEditor('${b.id}')">📝 Éditer texte</button>
+                <button class="btn btn-outline btn-sm" onclick="openContentEditor('${jsStr(b.id)}')">📝 Éditer texte</button>
               </td>
             </tr>
           `;
@@ -241,7 +304,7 @@ async function extractTextFromPdf(file) {
     throw new Error("La librairie pdf.js n'a pas pu se charger (vérifiez votre connexion internet).");
   }
   const buffer = await file.arrayBuffer();
-  const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
+  const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(buffer) }).promise;
   const pageBlocks = [];
 
   for (let i = 1; i <= pdf.numPages; i++) {
@@ -324,8 +387,238 @@ async function storeImages(files) {
    ------------------------------------------------------------------------- */
 // État de l'import en cours
 let _pendingPdfBase64 = null;
+let _pendingPdfUrl = null;
 let _pendingPdfPageCount = 0;
 let _pendingImages = [];
+
+// Upload d'un fichier vers le bucket Storage "media" (URL publique)
+async function uploadToStorage(file, path) {
+  if (!supabaseClient) throw new Error("Supabase non configuré — vérifiez supabase-config.js");
+  const { data } = await supabaseClient.auth.getSession();
+  if (!data.session) throw new Error("Session admin requise — reconnectez-vous à admin.html");
+  const { error } = await supabaseClient.storage.from("media").upload(path, file, { upsert: true, contentType: file.type || "application/octet-stream", cacheControl: "3600" });
+  if (error) throw error;
+  const { data: pub } = supabaseClient.storage.from("media").getPublicUrl(path);
+  return pub.publicUrl;
+}
+
+// Nombre de pages d'un PDF directement depuis le File (sans stocker le base64)
+async function getPdfPageCountFromFile(file) {
+  if (!window["pdfjsLib"]) return 0;
+  try {
+    const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise;
+    return pdf.numPages;
+  } catch (e) { return 0; }
+}
+
+// Supprime des URLs Storage données (extrait les chemins depuis /media/)
+async function removeStorageUrls(urls) {
+  if (!supabaseClient || !urls || !urls.length) return;
+  const names = urls.map(u => {
+    try { return decodeURIComponent(new URL(u).pathname.split("/media/")[1]); } catch (e) { return null; }
+  }).filter(Boolean);
+  if (names.length) {
+    try { await supabaseClient.storage.from("media").remove(names); } catch (e) {}
+  }
+}
+
+// Supprime les artefacts locaux liés à des livres (progression, favoris, marque-pages)
+function cleanLocalBookArtifacts(ids) {
+  ["biblio_reading_progress", "biblio_favorites", "biblio_bookmarks"].forEach(key => {
+    try {
+      const all = JSON.parse(localStorage.getItem(key) || "{}");
+      let changed = false;
+      ids.forEach(id => { if (id in all) { delete all[id]; changed = true; } });
+      if (changed) localStorage.setItem(key, JSON.stringify(all));
+    } catch (e) {}
+  });
+}
+
+// Supprime les fichiers Storage liés à un livre (meilleur effort)
+async function removeBookFilesFromStorage(book) {
+  if (!supabaseClient || !book) return;
+  const urls = [];
+  if (book.pdfUrl) urls.push(book.pdfUrl);
+  (book.pages || []).forEach(u => { if (typeof u === "string" && u.includes("/media/")) urls.push(u); });
+  await removeStorageUrls(urls);
+}
+
+/* -------------------------------------------------------------------------
+   7b) IMPORT PDF GROUPÉ — métadonnées automatiques
+   ------------------------------------------------------------------------- */
+async function ensureSupabaseSession() {
+  if (!supabaseClient) return true; // mode local : pas de session requise
+  const { data } = await supabaseClient.auth.getSession();
+  return !!data.session;
+}
+
+function setBatchProgress(pct, text) {
+  const wrap = document.getElementById("pdfBatchProgress");
+  const fill = document.getElementById("pdfBatchFill");
+  const status = document.getElementById("pdfBatchStatus");
+  if (!wrap) return;
+  wrap.hidden = false;
+  if (fill) fill.style.width = Math.max(0, Math.min(100, pct)) + "%";
+  if (status && text) status.textContent = text;
+  if (pct >= 100) {
+    setTimeout(() => { wrap.hidden = true; if (fill) fill.style.width = "0%"; }, 3000);
+  }
+}
+
+function cleanFileNameToTitle(name) {
+  return (name || "").replace(/\.pdf$/i, "").replace(/[_\-]+/g, " ").replace(/\s+/g, " ").trim() || "Sans titre";
+}
+
+// Rend la 1ʳᵉ page du PDF en image (couverture)
+async function getPdfCoverDataUrl(pdfDoc) {
+  try {
+    const page = await pdfDoc.getPage(1);
+    const rawVp = page.getViewport({ scale: 1 });
+    const scale = Math.min(1.2, 400 / rawVp.width); // largeur max 400 px
+    const viewport = page.getViewport({ scale });
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.ceil(viewport.width);
+    canvas.height = Math.ceil(viewport.height);
+    await page.render({ canvasContext: canvas.getContext("2d"), viewport }).promise;
+    return canvas.toDataURL("image/jpeg", 0.8);
+  } catch (e) { return ""; }
+}
+
+async function importSinglePdf(file, index, total) {
+  const label = `[${index + 1}/${total}] ${file.name}`;
+  setBatchProgress((index / total) * 100, `${label} — analyse…`);
+
+  if (file.size > 30 * 1024 * 1024) {
+    showToast(`⚠️ « ${file.name} » dépasse 30 Mo (${formatFileSize(file.size)}) — pensez à le compresser pour une lecture plus rapide.`, "info");
+  }
+
+  const buf = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(buf) }).promise;
+  const numPages = pdf.numPages || 0;
+  let meta = {};
+  try { meta = (await pdf.getMetadata())?.info || {}; } catch (e) {}
+
+  const title = (meta.Title || "").trim() || cleanFileNameToTitle(file.name);
+  const author = (meta.Author || "").trim() || "Auteur inconnu";
+
+  setBatchProgress(((index + 0.3) / total) * 100, `${label} — couverture…`);
+  let coverUrl = "";
+  const coverDataUrl = await getPdfCoverDataUrl(pdf);
+  if (coverDataUrl && supabaseClient) {
+    try {
+      const blob = await (await fetch(coverDataUrl)).blob();
+      const coverFile = new File([blob], `cover-${Date.now()}-${index}.jpg`, { type: "image/jpeg" });
+      coverUrl = await uploadToStorage(coverFile, `covers/${Date.now()}-${index}-${file.name.replace(/[^\w.\-]/g, "_")}.jpg`);
+    } catch (e) { console.warn("[Import PDF] couverture non envoyée :", e); }
+  }
+
+  setBatchProgress(((index + 0.6) / total) * 100, `${label} — envoi du PDF…`);
+  const pdfUrl = await uploadToStorage(file, `pdfs/${Date.now()}-${file.name.replace(/[^\w.\-]/g, "_")}`);
+
+  setBatchProgress(((index + 0.85) / total) * 100, `${label} — enregistrement…`);
+  const newBook = {
+    id: generateId(),
+    isbn: "",
+    title,
+    author,
+    category: "Non classé",
+    year: null,
+    language: "",
+    description: "",
+    maxCopies: 1,
+    copies: 1,
+    cover: coverUrl,
+    contentType: "pdf",
+    content: "",
+    pdfUrl,
+    pageCount: numPages
+  };
+  books = loadBooks();
+  books.push(newBook);
+  saveBooks(books);
+  await syncBookToSupabase(newBook);
+  return newBook;
+}
+
+async function importPdfFiles(fileList) {
+  const files = Array.from(fileList || []).filter(f => /\.pdf$/i.test(f.name) || f.type === "application/pdf");
+  if (!files.length) { showToast("Aucun fichier PDF valide.", "error"); return; }
+
+  if (supabaseClient && !(await ensureSupabaseSession())) {
+    showToast("⚠️ Session admin expirée — reconnectez-vous pour importer des PDF.", "error");
+    return;
+  }
+
+  let ok = 0, ko = 0;
+  for (let i = 0; i < files.length; i++) {
+    try {
+      await importSinglePdf(files[i], i, files.length);
+      ok++;
+    } catch (e) {
+      ko++;
+      console.error("[Import PDF]", e);
+      showToast(`Échec « ${files[i].name} » : ${e.message}`, "error");
+    }
+  }
+  setBatchProgress(100, `${ok} livre(s) importé(s)${ko ? `, ${ko} échec(s)` : ""}`);
+  renderAllAdminViews();
+  if (ok) showToast(`✅ ${ok} livre(s) PDF importé(s) et synchronisé(s) !`, "success");
+}
+
+function initPdfBatchImport() {
+  const zone = document.getElementById("pdfBatchDropZone");
+  const input = document.getElementById("pdfBatchInput");
+  if (!zone || !input) return;
+
+  zone.addEventListener("click", (e) => {
+    if (e.target.closest("label")) return; // le label gère déjà le clic
+    input.click();
+  });
+  zone.addEventListener("dragover", (e) => { e.preventDefault(); zone.classList.add("drag-over"); });
+  zone.addEventListener("dragleave", () => zone.classList.remove("drag-over"));
+  zone.addEventListener("drop", (e) => {
+    e.preventDefault();
+    zone.classList.remove("drag-over");
+    importPdfFiles(e.dataTransfer.files);
+  });
+  input.addEventListener("change", (e) => {
+    importPdfFiles(e.target.files);
+    input.value = "";
+  });
+}
+
+/* -------------------------------------------------------------------------
+   7c) MODALE D'ÉDITION RAPIDE
+   ------------------------------------------------------------------------- */
+function initEditModal() {
+  document.getElementById("adminEditCancel")?.addEventListener("click", () => {
+    document.getElementById("adminEditOverlay").hidden = true;
+    editingBookId = null;
+  });
+
+  document.getElementById("adminEditSave")?.addEventListener("click", () => {
+    const id = editingBookId;
+    if (!id) return;
+    const title = document.getElementById("editBookTitle").value.trim();
+    const author = document.getElementById("editBookAuthor").value.trim();
+    const category = document.getElementById("editBookCategory").value.trim() || "Non classé";
+    if (!title || !author) {
+      showToast("Titre et auteur sont requis.", "error");
+      return;
+    }
+    const book = books.find(b => b.id === id);
+    if (!book) return;
+    book.title = title;
+    book.author = author;
+    book.category = category;
+    saveBooks(books);
+    syncBookToSupabase(book);
+    document.getElementById("adminEditOverlay").hidden = true;
+    editingBookId = null;
+    renderAllAdminViews();
+    showToast(`« ${title} » mis à jour.`, "success");
+  });
+}
 
 function initBookForm() {
   const form = document.getElementById("adminBookForm");
@@ -450,6 +743,7 @@ function initBookForm() {
   // Bouton supprimer PDF
   document.getElementById("adminPdfRemoveBtn")?.addEventListener("click", () => {
     _pendingPdfBase64 = null;
+    _pendingPdfUrl = null;
     _pendingPdfPageCount = 0;
     document.getElementById("bookPdfData").value = "";
     document.getElementById("bookPdfPageCount").value = "0";
@@ -504,13 +798,13 @@ function initBookForm() {
     const cover = document.getElementById("bookCover").value.trim();
     const contentType = document.querySelector('input[name="bookContentType"]:checked')?.value || "text";
 
-    if (!title || !author || !category || isNaN(year) || isNaN(copies)) {
+    if (!title || !author || !category || isNaN(copies)) {
       showToast("Veuillez remplir tous les champs obligatoires.", "error");
       return;
     }
 
     // Validation selon le type
-    if (contentType === "pdf" && !_pendingPdfBase64 && !editingBookId) {
+    if (contentType === "pdf" && !_pendingPdfBase64 && !_pendingPdfUrl && !editingBookId) {
       showToast("Veuillez importer un fichier PDF.", "error");
       return;
     }
@@ -522,7 +816,7 @@ function initBookForm() {
     books = loadBooks();
 
     const bookData = {
-      isbn, title, author, category, year, language, description,
+      isbn, title, author, category, year: isNaN(year) ? null : year, language, description,
       maxCopies: copies, cover, contentType
     };
 
@@ -532,6 +826,12 @@ function initBookForm() {
       if (_pendingPdfBase64) {
         bookData.pdfData = _pendingPdfBase64;
         bookData.pageCount = _pendingPdfPageCount;
+      }
+      if (_pendingPdfUrl) {
+        bookData.pdfUrl = _pendingPdfUrl;
+        bookData.pageCount = _pendingPdfPageCount;
+      } else {
+        bookData.pdfUrl = null;
       }
       bookData.content = "";
     } else if (contentType === "images") {
@@ -588,20 +888,41 @@ function initBookForm() {
 }
 
 function _proceedSaveBook(idToUpdate, bookData) {
+  const data = { ...bookData };
+  delete data.id;
+
   if (idToUpdate) {
     const book = books.find(b => b.id === idToUpdate);
     if (book) {
-      Object.assign(book, bookData);
-      book.copies = Math.min(bookData.maxCopies, book.copies || bookData.maxCopies);
+      // Mémoriser les anciens fichiers Storage pour supprimer les orphelins
+      const oldPdfUrl = book.pdfUrl || null;
+      const oldPages = Array.isArray(book.pages) ? book.pages.filter(u => typeof u === "string" && u.includes("/media/")) : [];
+
+      Object.assign(book, data);
+      book.copies = Math.min(data.maxCopies, book.copies ?? data.maxCopies);
+      // Supprimer les données de contenu devenues obsolètes après changement de type
+      if (data.contentType === "text") { delete book.pdfData; delete book.pdfUrl; delete book.pages; delete book.pageCount; }
+      else if (data.contentType === "pdf") { delete book.pages; }
+      else if (data.contentType === "images") { delete book.pdfData; delete book.pdfUrl; }
       saveBooks(books);
       syncBookToSupabase(book);
+      // Supprimer les fichiers Storage remplacés ou retirés
+      if (supabaseClient) {
+        const stillUsed = new Set();
+        if (book.pdfUrl) stillUsed.add(book.pdfUrl);
+        (book.pages || []).forEach(u => stillUsed.add(u));
+        const orphans = [];
+        if (oldPdfUrl && oldPdfUrl !== book.pdfUrl) orphans.push(oldPdfUrl);
+        oldPages.forEach(u => { if (!stillUsed.has(u)) orphans.push(u); });
+        removeStorageUrls(orphans);
+      }
       showToast(`« ${book.title} » mis à jour avec succès !`, "success");
     }
   } else {
     const newBook = {
       id: generateId(),
-      copies: bookData.maxCopies,
-      ...bookData
+      copies: data.maxCopies,
+      ...data
     };
     books.push(newBook);
     saveBooks(books);
@@ -672,7 +993,7 @@ async function fetchIsbnData(isbn) {
   return {
     title: book.title || "",
     author: book.authors ? book.authors.map(a => a.name).join(", ") : "",
-    year: book.publish_date ? parseInt(book.publish_date.match(/\d{4}/)?.[0]) : "",
+    year: (() => { const m = book.publish_date && book.publish_date.match(/\d{4}/); return m ? parseInt(m[0], 10) : null; })(),
     cover: book.cover ? book.cover.large : ""
   };
 }
@@ -692,33 +1013,48 @@ async function handlePdfNativeImport(file) {
   previewEl.innerHTML = `<span class="muted">⏳ Génération des aperçus de pages…</span>`;
 
   try {
-    _pendingPdfBase64 = await storePdfNative(file);
-    _pendingPdfPageCount = await getPdfPageCount(_pendingPdfBase64);
+    _pendingPdfBase64 = null;
+    _pendingPdfUrl = null;
 
-    document.getElementById("bookPdfData").value = _pendingPdfBase64;
-    document.getElementById("bookPdfPageCount").value = _pendingPdfPageCount;
-    document.getElementById("adminPdfFileSize").textContent = `${formatFileSize(file.size)} · ${_pendingPdfPageCount} page(s)`;
+    if (supabaseClient) {
+      // Upload direct vers Supabase Storage (pas de base64 local)
+      const safeName = file.name.replace(/[^\w.\-]/g, "_");
+      _pendingPdfUrl = await uploadToStorage(file, `pdfs/${Date.now()}-${safeName}`);
+      _pendingPdfPageCount = await getPdfPageCountFromFile(file);
 
-    // Générer miniatures des premières pages
-    const previews = await generatePdfPagePreviews(_pendingPdfBase64, 4);
-    if (previews.length) {
-      previewEl.innerHTML = `
-        <div class="pdf-previews-label">Aperçu des premières pages :</div>
-        <div class="pdf-previews-row">
-          ${previews.map(p => `
-            <div class="pdf-preview-thumb">
-              <img src="${p.dataUrl}" alt="Page ${p.pageNum}" />
-              <span>Page ${p.pageNum}</span>
-            </div>`).join("")}
-        </div>`;
+      document.getElementById("bookPdfData").value = "";
+      document.getElementById("bookPdfPageCount").value = _pendingPdfPageCount;
+      document.getElementById("adminPdfFileSize").textContent = `${formatFileSize(file.size)} · ${_pendingPdfPageCount} page(s) · hébergé sur Supabase`;
+      previewEl.innerHTML = `<span class="muted">✅ PDF uploadé sur Supabase Storage (${_pendingPdfPageCount} pages)</span>`;
     } else {
-      previewEl.innerHTML = `<span class="muted">✅ PDF chargé (aperçu non disponible pour ce fichier)</span>`;
-    }
+      _pendingPdfBase64 = await storePdfNative(file);
+      _pendingPdfPageCount = await getPdfPageCount(_pendingPdfBase64);
 
-    // Auto-fill couverture depuis la 1ère page si pas de couverture
-    if (previews.length && !document.getElementById("bookCover").value.trim()) {
-      document.getElementById("bookCover").value = previews[0].dataUrl;
-      updateCoverPreview(previews[0].dataUrl);
+      document.getElementById("bookPdfData").value = _pendingPdfBase64;
+      document.getElementById("bookPdfPageCount").value = _pendingPdfPageCount;
+      document.getElementById("adminPdfFileSize").textContent = `${formatFileSize(file.size)} · ${_pendingPdfPageCount} page(s)`;
+
+      // Générer miniatures des premières pages
+      const previews = await generatePdfPagePreviews(_pendingPdfBase64, 4);
+      if (previews.length) {
+        previewEl.innerHTML = `
+          <div class="pdf-previews-label">Aperçu des premières pages :</div>
+          <div class="pdf-previews-row">
+            ${previews.map(p => `
+              <div class="pdf-preview-thumb">
+                <img src="${p.dataUrl}" alt="Page ${p.pageNum}" />
+                <span>Page ${p.pageNum}</span>
+              </div>`).join("")}
+          </div>`;
+
+        // Auto-fill couverture depuis la 1ère page si pas de couverture
+        if (!document.getElementById("bookCover").value.trim()) {
+          document.getElementById("bookCover").value = previews[0].dataUrl;
+          updateCoverPreview(previews[0].dataUrl);
+        }
+      } else {
+        previewEl.innerHTML = `<span class="muted">✅ PDF chargé (aperçu non disponible pour ce fichier)</span>`;
+      }
     }
 
     showToast(`PDF « ${file.name} » chargé (${_pendingPdfPageCount} pages)`, "success");
@@ -741,7 +1077,17 @@ async function handleImagesImport(files) {
 
   try {
     const validFiles = Array.from(files).filter(f => f.type.startsWith("image/"));
-    _pendingImages = await storeImages(validFiles);
+    if (supabaseClient) {
+      // Upload vers Supabase Storage : les pages deviennent des URLs publiques
+      _pendingImages = [];
+      for (let i = 0; i < validFiles.length; i++) {
+        const safeName = validFiles[i].name.replace(/[^\w.\-]/g, "_");
+        const url = await uploadToStorage(validFiles[i], `pages/${Date.now()}-${i}-${safeName}`);
+        _pendingImages.push(url);
+      }
+    } else {
+      _pendingImages = await storeImages(validFiles);
+    }
     document.getElementById("bookImagesData").value = JSON.stringify(_pendingImages);
 
     dropZone.hidden = true;
@@ -775,9 +1121,12 @@ function formatFileSize(bytes) {
 
 // Basculer entre les panneaux selon le type sélectionné
 function switchContentTypePanel(type) {
-  document.getElementById("panelText").hidden = (type !== "text");
-  document.getElementById("panelPdf").hidden = (type !== "pdf");
-  document.getElementById("panelImages").hidden = (type !== "images");
+  const pText = document.getElementById("panelText");
+  const pPdf = document.getElementById("panelPdf");
+  const pImages = document.getElementById("panelImages");
+  if (pText) pText.hidden = (type !== "text");
+  if (pPdf) pPdf.hidden = (type !== "pdf");
+  if (pImages) pImages.hidden = (type !== "images");
 
   // Mise à jour visuelle des labels
   document.querySelectorAll(".content-type-btn").forEach(label => {
@@ -799,96 +1148,27 @@ function updateCoverPreview(src) {
   }
 }
 
+// Ouvre la modale d'édition rapide (titre / auteur / catégorie)
 function editBookInForm(bookId) {
   books = loadBooks();
   const book = books.find(b => b.id === bookId);
   if (!book) return;
 
   editingBookId = book.id;
-  _pendingPdfBase64 = null;
-  _pendingPdfPageCount = 0;
-  _pendingImages = [];
-
-  document.getElementById("adminBookId").value = book.id;
-  document.getElementById("bookTitle").value = book.title;
-  document.getElementById("bookAuthor").value = book.author;
-  document.getElementById("bookCategory").value = book.category;
-  document.getElementById("bookYear").value = book.year;
-  document.getElementById("bookCopies").value = book.maxCopies;
-  document.getElementById("bookCover").value = book.cover || "";
-
-  const ct = book.contentType || "text";
-  const radioEl = document.querySelector(`input[name="bookContentType"][value="${ct}"]`);
-  if (radioEl) radioEl.checked = true;
-  switchContentTypePanel(ct);
-
-  if (ct === "text") {
-    document.getElementById("bookTextContent").value = book.content || "";
-  } else if (ct === "pdf" && book.pdfData) {
-    _pendingPdfBase64 = book.pdfData;
-    _pendingPdfPageCount = book.pageCount || 0;
-    document.getElementById("bookPdfData").value = book.pdfData;
-    document.getElementById("bookPdfPageCount").value = book.pageCount || 0;
-    document.getElementById("adminPdfInfo").hidden = false;
-    document.getElementById("adminPdfDropZone").hidden = true;
-    document.getElementById("adminPdfFileName").textContent = "PDF enregistré";
-    document.getElementById("adminPdfFileSize").textContent = `${book.pageCount || 0} page(s)`;
-    document.getElementById("adminPdfPagesPreview").innerHTML = `<span class="muted">✅ PDF chargé — ${book.pageCount || 0} pages</span>`;
-  } else if (ct === "images" && book.pages?.length) {
-    _pendingImages = book.pages;
-    document.getElementById("adminImagesDropZone").hidden = true;
-    document.getElementById("adminImagesPreviewGrid").hidden = false;
-    document.getElementById("adminImageCount").textContent = `${book.pages.length} page(s) chargée(s)`;
-    document.getElementById("adminImagesThumbs").innerHTML = book.pages.map((src, idx) =>
-      `<div class="image-thumb-item"><img src="${src}" alt="Page ${idx + 1}" /><span>Page ${idx + 1}</span></div>`
-    ).join("");
-  }
-
-  updateCoverPreview(book.cover || "");
-
-  document.getElementById("adminFormTitle").textContent = `✏️ Modifier « ${book.title} »`;
-  document.getElementById("adminSubmitBookBtn").textContent = "Enregistrer les modifications";
-  document.getElementById("adminCancelEditBtn").hidden = false;
-
-  switchAdminView("add-book");
+  document.getElementById("adminEditTitle").textContent = `✏️ Modifier « ${book.title} »`;
+  document.getElementById("editBookTitle").value = book.title || "";
+  document.getElementById("editBookAuthor").value = book.author || "";
+  document.getElementById("editBookCategory").value = book.category || "";
+  document.getElementById("adminEditOverlay").hidden = false;
 }
 
 function resetBookForm() {
   editingBookId = null;
   _pendingPdfBase64 = null;
+  _pendingPdfUrl = null;
   _pendingPdfPageCount = 0;
   _pendingImages = [];
-
-  const form = document.getElementById("adminBookForm");
-  if (form) form.reset();
-
-  updateCoverPreview("");
-  switchContentTypePanel("text");
-
-  // Réinitialiser panneaux PDF et images
-  const pdfInfo = document.getElementById("adminPdfInfo");
-  if (pdfInfo) pdfInfo.hidden = true;
-  const pdfDrop = document.getElementById("adminPdfDropZone");
-  if (pdfDrop) pdfDrop.hidden = false;
-  const imgGrid = document.getElementById("adminImagesPreviewGrid");
-  if (imgGrid) imgGrid.hidden = true;
-  const imgDrop = document.getElementById("adminImagesDropZone");
-  if (imgDrop) imgDrop.hidden = false;
-
-  const pdfStatus = document.getElementById("bookPdfImportStatus");
-  if (pdfStatus) pdfStatus.hidden = true;
-
-  // ✅ Bug 1 Fix — Remettre le premier onglet (Ajout manuel) actif
-  document.querySelectorAll(".add-book-tab-btn").forEach((b, i) => {
-    b.classList.toggle("active", i === 0);
-  });
-  document.querySelectorAll(".add-book-tab-panel").forEach((p, i) => {
-    p.classList.toggle("active", i === 0);
-  });
-
-  document.getElementById("adminFormTitle").textContent = "➕ Ajouter un nouveau livre";
-  document.getElementById("adminSubmitBookBtn").textContent = "💾 Enregistrer le livre";
-  document.getElementById("adminCancelEditBtn").hidden = true;
+  document.getElementById("adminEditOverlay") && (document.getElementById("adminEditOverlay").hidden = true);
 }
 
 /* -------------------------------------------------------------------------
@@ -912,7 +1192,7 @@ function renderManageBooksTable(query = "") {
   if (!tbody) return;
 
   const filtered = query
-    ? books.filter(b => b.title.toLowerCase().includes(query) || b.author.toLowerCase().includes(query) || b.category.toLowerCase().includes(query))
+    ? books.filter(b => (b.title || "").toLowerCase().includes(query) || (b.author || "").toLowerCase().includes(query) || (b.category || "").toLowerCase().includes(query))
     : books;
 
   if (!filtered.length) {
@@ -921,11 +1201,12 @@ function renderManageBooksTable(query = "") {
   }
 
   tbody.innerHTML = filtered.map(b => {
-    const hasC = !!(b.content && b.content.trim());
-    const chaptersCount = hasC ? b.content.split(/^---/m).filter(s => s.trim()).length : 0;
+    const ct = b.contentType || "text";
+    const hasC = ct === "pdf" ? !!(b.pdfData || b.pdfUrl) : ct === "images" ? !!(b.pages && b.pages.length) : !!(b.content && b.content.trim());
+    const contentBadge = ct === "pdf" ? "✓ PDF" : ct === "images" ? `✓ ${b.pages.length} img` : (hasC ? `✓ ${b.content.split(/^---/m).filter(s => s.trim()).length} ch.` : "⚠ Aucun texte");
     const thumb = b.cover
       ? `<img src="${escapeAttr(b.cover)}" alt="" style="width:36px;height:50px;object-fit:cover;border-radius:4px;" />`
-      : `<div style="width:36px;height:50px;background:${colorForCategory(b.category)};border-radius:4px;display:grid;place-items:center;color:#fff;font-size:12px;font-weight:700;">${escapeHTML(b.title.slice(0,2))}</div>`;
+      : `<div style="width:36px;height:50px;background:${colorForCategory(b.category)};border-radius:4px;display:grid;place-items:center;color:#fff;font-size:12px;font-weight:700;">${escapeHTML((b.title || "").slice(0,2))}</div>`;
 
     return `
       <tr>
@@ -934,18 +1215,18 @@ function renderManageBooksTable(query = "") {
         <td><b>${escapeHTML(b.title)}</b></td>
         <td>${escapeHTML(b.author)}</td>
         <td>${escapeHTML(b.category)}</td>
-        <td>${b.year}</td>
+        <td>${b.year ?? '—'}</td>
         <td>${b.copies}/${b.maxCopies}</td>
         <td>
           <span class="admin-content-badge ${hasC ? 'ok' : 'missing'}">
-            ${hasC ? `✓ ${chaptersCount} ch.` : '⚠ Aucun texte'}
+            ${contentBadge}
           </span>
         </td>
         <td>
           <div class="row-actions">
-            <button class="btn btn-outline btn-sm" onclick="editBookInForm('${b.id}')">✏️ Modifier</button>
-            <button class="btn btn-primary btn-sm" onclick="openContentEditor('${b.id}')">📝 Texte</button>
-            <button class="btn btn-danger btn-sm" onclick="askDeleteBook('${b.id}')">🗑️</button>
+            <button class="btn btn-outline btn-sm" onclick="editBookInForm('${jsStr(b.id)}')">✏️ Modifier</button>
+            <button class="btn btn-primary btn-sm" onclick="openContentEditor('${jsStr(b.id)}')">📝 Texte</button>
+            <button class="btn btn-danger btn-sm" onclick="askDeleteBook('${jsStr(b.id)}')">🗑️</button>
           </div>
         </td>
       </tr>
@@ -984,10 +1265,16 @@ function askDeleteAllBooks() {
 async function deleteAllBooks() {
   const count = books.length;
 
+  // Supprimer les fichiers Storage liés (meilleur effort)
+  if (supabaseClient) {
+    try { await Promise.all(books.map(b => removeBookFilesFromStorage(b))); } catch (e) {}
+  }
+
   // LocalStorage
   books = [];
   localStorage.removeItem(STORAGE_KEY);
   localStorage.removeItem(COUNTER_KEY);
+  ["biblio_reading_progress", "biblio_favorites", "biblio_bookmarks", "biblio_reader_settings", "biblio_user_profile"].forEach(k => localStorage.removeItem(k));
 
   // Supabase (si configuré)
   if (supabaseClient) {
@@ -1032,10 +1319,13 @@ document.getElementById("adminConfirmOk")?.addEventListener("click", async () =>
     return;
   }
   if (pendingDeleteId) {
+    const deletedBook = books.find(b => b.id === pendingDeleteId);
     books = loadBooks().filter(b => b.id !== pendingDeleteId);
     saveBooks(books);
+    cleanLocalBookArtifacts([pendingDeleteId]);
     if (supabaseClient) {
       supabaseClient.from("books").delete().eq("biblio_id", pendingDeleteId).then(() => {});
+      removeBookFilesFromStorage(deletedBook);
     }
     showToast("Livre supprimé de la collection.", "success");
     renderAllAdminViews();
@@ -1140,7 +1430,7 @@ function renderContentBooksList(query = "") {
   if (!container) return;
 
   const filtered = query
-    ? books.filter(b => b.title.toLowerCase().includes(query) || b.author.toLowerCase().includes(query))
+    ? books.filter(b => (b.title || "").toLowerCase().includes(query) || (b.author || "").toLowerCase().includes(query))
     : books;
 
   if (!filtered.length) {
@@ -1149,21 +1439,22 @@ function renderContentBooksList(query = "") {
   }
 
   container.innerHTML = filtered.map(b => {
-    const hasC = !!(b.content && b.content.trim());
-    const chapters = hasC ? b.content.split(/^---/m).filter(s => s.trim()).length : 0;
+    const ct = b.contentType || "text";
+    const hasC = ct === "pdf" ? !!(b.pdfData || b.pdfUrl) : ct === "images" ? !!(b.pages && b.pages.length) : !!(b.content && b.content.trim());
+    const badgeLabel = ct === "pdf" ? "✓ PDF" : ct === "images" ? "✓ Images" : (hasC ? `✓ ${b.content.split(/^---/m).filter(s => s.trim()).length} ch.` : '⚠ Vide');
     const thumb = b.cover
       ? `<div class="admin-book-thumb"><img src="${escapeAttr(b.cover)}" alt="" /></div>`
-      : `<div class="admin-book-thumb" style="background:${colorForCategory(b.category)}">${escapeHTML(b.title.slice(0,2))}</div>`;
+      : `<div class="admin-book-thumb" style="background:${colorForCategory(b.category)}">${escapeHTML((b.title || "").slice(0,2))}</div>`;
 
     return `
-      <div class="admin-book-item ${hasC ? 'has-content' : 'no-content'}" onclick="openContentEditor('${b.id}')">
+      <div class="admin-book-item ${hasC ? 'has-content' : 'no-content'}" onclick="openContentEditor('${jsStr(b.id)}')">
         ${thumb}
         <div class="admin-book-info">
           <h4>${escapeHTML(b.title)}</h4>
           <span>${escapeHTML(b.author)}</span>
         </div>
         <span class="admin-content-badge ${hasC ? 'ok' : 'missing'}">
-          ${hasC ? `✓ ${chapters} ch.` : '⚠ Vide'}
+          ${badgeLabel}
         </span>
       </div>
     `;
@@ -1178,7 +1469,7 @@ function openContentEditor(bookId) {
   activeEditorBookId = book.id;
 
   document.getElementById("editorBookTitle").textContent = book.title;
-  document.getElementById("editorBookAuthor").textContent = `${book.author} (${book.year})`;
+  document.getElementById("editorBookAuthor").textContent = `${book.author} (${book.year || '—'})`;
   const coverEl = document.getElementById("editorCoverThumb");
   if (coverEl) {
     coverEl.innerHTML = book.cover
@@ -1211,7 +1502,8 @@ function parseRawToBlocks(rawText) {
     let title = `Chapitre ${idx + 1}`;
     let body = sec;
     const firstLine = lines[0].replace(/^---|---$/g, "").trim();
-    if (firstLine.length < 90) {
+    const fl = firstLine.toLowerCase();
+    if (fl.startsWith("chapitre") || fl.startsWith("fable") || fl.startsWith("page") || firstLine.length < 80) {
       title = firstLine;
       body = lines.slice(1).join("\n").trim();
     }
@@ -1259,11 +1551,20 @@ function syncBlocksToRaw() {
    10) SUPABASE INTEGRATION
    ------------------------------------------------------------------------- */
 function initSupabase() {
+  if (_useSupabaseAuth) {
+    const emailField = document.getElementById("adminEmailField");
+    if (emailField) emailField.hidden = false;
+  }
   const cfg = loadSupabaseConfig();
-  if (cfg.url && cfg.key) {
-    document.getElementById("supaUrlInput").value = cfg.url;
-    document.getElementById("supaKeyInput").value = cfg.key;
-    connectSupabase(cfg.url, cfg.key);
+  const cfgUrl = (window.SUPABASE_URL && !window.SUPABASE_URL.includes("VOTRE")) ? window.SUPABASE_URL : cfg.url;
+  const cfgKey = (window.SUPABASE_ANON_KEY && !window.SUPABASE_ANON_KEY.includes("VOTRE")) ? window.SUPABASE_ANON_KEY : cfg.key;
+  if (cfgUrl && cfgKey) {
+    document.getElementById("supaUrlInput").value = cfgUrl;
+    document.getElementById("supaKeyInput").value = cfgKey;
+    connectSupabase(cfgUrl, cfgKey);
+  } else {
+    setSupaStatusUI(false, "Supabase non configuré");
+    showToast("⚠️ Supabase non configuré — renseignez supabase-config.js", "error");
   }
 
   document.getElementById("supaConfigForm")?.addEventListener("submit", (e) => {
@@ -1295,7 +1596,7 @@ function connectSupabase(url, key) {
     if (!window.supabase) return;
     supabaseClient = window.supabase.createClient(url, key);
 
-    supabaseClient.from("books").select("count", { count: "exact", head: true })
+    supabaseClient.from("books").select("*", { count: "exact", head: true })
       .then(({ error }) => {
         if (error) {
           setSupaStatusUI(false, `Erreur : ${error.message}`);
@@ -1324,9 +1625,17 @@ function setSupaStatusUI(connected, label) {
   if (configDot) configDot.className = "status-dot " + (connected ? "connected" : "error");
 }
 
+// Invalide le cache catalogue côté site public (sessionStorage)
+function invalidatePublicCatalogCache() {
+  try {
+    sessionStorage.removeItem("biblio_cloud_catalog");
+    sessionStorage.removeItem("biblio_cloud_catalog_ts");
+  } catch (e) {}
+}
+
 async function syncBookToSupabase(book) {
   if (!supabaseClient) return;
-  await supabaseClient.from("books").upsert({
+  const { error } = await supabaseClient.from("books").upsert({
     biblio_id: book.id,
     isbn: book.isbn,
     title: book.title,
@@ -1339,8 +1648,13 @@ async function syncBookToSupabase(book) {
     copies: book.copies,
     cover_url: book.cover,
     content_type: book.contentType,
-    content: book.content
+    content: book.content,
+    pdf_data: book.pdfData || null,
+    pages: book.pages || null,
+    file_url: book.pdfUrl || null
   }, { onConflict: "biblio_id" });
+  if (error) showToast("Synchro Supabase échouée : " + error.message, "error");
+  else invalidatePublicCatalogCache();
 }
 
 async function pushAllBooksToSupabase() {
@@ -1366,7 +1680,10 @@ async function pushAllBooksToSupabase() {
     copies: b.copies,
     cover_url: b.cover,
     content_type: b.contentType,
-    content: b.content
+    content: b.content,
+    pdf_data: b.pdfData || null,
+    pages: b.pages || null,
+    file_url: b.pdfUrl || null
   }));
 
   const { error } = await supabaseClient.from("books").upsert(rows, { onConflict: "biblio_id" });
@@ -1375,6 +1692,7 @@ async function pushAllBooksToSupabase() {
     showToast("Erreur Supabase : " + error.message, "error");
   } else {
     showToast(`${books.length} livres synchronisés dans le Cloud Supabase ! ☁️`, "success");
+    invalidatePublicCatalogCache();
   }
 }
 
@@ -1481,7 +1799,7 @@ function initImportExport() {
     const doc = new jsPDF();
     doc.setFontSize(16);
     doc.text("Bibliothèque — Inventaire Administrateur", 14, 16);
-    const rows = books.map(b => [b.id, b.title, b.author, b.category, String(b.year), `${b.copies}/${b.maxCopies}`]);
+    const rows = books.map(b => [b.id, b.title, b.author, b.category, String(b.year ?? ''), `${b.copies}/${b.maxCopies}`]);
     doc.autoTable({
       head: [["ID", "Titre", "Auteur", "Catégorie", "Année", "Stock"]],
       body: rows,
@@ -1518,8 +1836,11 @@ function initImportExport() {
   // Reset local
   document.getElementById("adminResetLocalBtn")?.addEventListener("click", () => {
     if (confirm("⚠️ Réinitialiser toutes les données locales ? Cette action est irréversible.")) {
-      localStorage.removeItem(STORAGE_KEY);
-      localStorage.removeItem(COUNTER_KEY);
+      [
+        STORAGE_KEY, COUNTER_KEY,
+        "biblio_reading_progress", "biblio_favorites", "biblio_bookmarks",
+        "biblio_reader_settings", "biblio_user_profile"
+      ].forEach(k => localStorage.removeItem(k));
       books = [];
       renderAllAdminViews();
       showToast("Données locales réinitialisées.", "info");
@@ -1538,6 +1859,11 @@ function showToast(msg, type = "info") {
   toast.textContent = msg;
   container.appendChild(toast);
   setTimeout(() => toast.remove(), 3200);
+}
+
+// Échappe une chaîne pour insertion dans un handler JS inline (onclick="fn('...')")
+function jsStr(s) {
+  return String(s ?? "").replace(/\\/g, "\\\\").replace(/'/g, "\\'");
 }
 
 function escapeHTML(str) {
@@ -1562,6 +1888,10 @@ function initAdvancedImports() {
   const isbnSearchBtn = document.getElementById("isbnSearchBtn");
   const isbnSearchInput = document.getElementById("isbnSearchInput");
   const isbnResultsList = document.getElementById("isbnResultsList");
+
+  isbnSearchInput?.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") isbnSearchBtn?.click();
+  });
 
   isbnSearchBtn?.addEventListener("click", async () => {
     const query = isbnSearchInput.value.trim();
@@ -1595,7 +1925,6 @@ function initAdvancedImports() {
 
         document.getElementById("isbnAddBtn").addEventListener("click", () => {
           const newBook = {
-            id: generateId(),
             isbn: query,
             title: data.title,
             author: data.author || 'Inconnu',
@@ -1658,15 +1987,18 @@ function initAdvancedImports() {
   });
 }
 
-function handleCsvFile(file) {
-  const reader = new FileReader();
-  reader.onload = (e) => {
-    const text = e.target.result;
-    const lines = text.split(/\r?\n/).filter(line => line.trim() !== "");
-    if (lines.length < 2) return showToast("Fichier CSV vide ou invalide.", "error");
+async function handleCsvFile(file) {
+  try {
+    const buf = await file.arrayBuffer();
+    const wb = XLSX.read(buf, { type: "array" });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: "" });
+    const headers = (rows[0] || []).map(h => String(h).trim().toLowerCase());
+    const dataRows = rows.slice(1)
+      .map(r => (r || []).map(c => String(c ?? "").trim()))
+      .filter(r => r.some(c => c !== ""));
 
-    const headers = lines[0].split(",").map(h => h.trim().toLowerCase());
-    const dataRows = lines.slice(1).map(line => line.split(",").map(c => c.trim()));
+    if (!dataRows.length) return showToast("Fichier vide ou sans données.", "error");
 
     const previewSection = document.getElementById("csvPreviewSection");
     let html = `
@@ -1711,7 +2043,7 @@ function handleCsvFile(file) {
       dataRows.forEach(row => {
         const getVal = (colName) => {
           const idx = headers.indexOf(colName);
-          return idx >= 0 ? row[idx] : "";
+          return idx >= 0 ? String(row[idx] ?? "").trim() : "";
         };
 
         const title = getVal("titre");
@@ -1726,11 +2058,11 @@ function handleCsvFile(file) {
         const description = getVal("description") || "";
         const cover = getVal("cover_url") || "";
 
-        const dupIndex = books.findIndex(b => (isbn && b.isbn === isbn) || (b.title.toLowerCase() === title.toLowerCase() && b.author.toLowerCase() === author.toLowerCase()));
+        const dupIndex = books.findIndex(b => (isbn && b.isbn === isbn) || ((b.title || "").toLowerCase() === title.toLowerCase() && (b.author || "").toLowerCase() === author.toLowerCase()));
 
         if (dupIndex >= 0) {
           if (updateIsbn) {
-            books[dupIndex] = { ...books[dupIndex], title, author, category, year, language, maxCopies, description, cover };
+            books[dupIndex] = { ...books[dupIndex], title, author, category, year, language, maxCopies, description, cover, copies: Math.min(maxCopies, books[dupIndex].copies ?? maxCopies) };
             updatedCount++;
           } else if (ignoreDups) {
             ignoredCount++;
@@ -1754,7 +2086,8 @@ function handleCsvFile(file) {
       
       showToast(`${importedCount} ajoutés, ${updatedCount} mis à jour, ${ignoredCount} ignorés.`, "success");
     });
-  };
-  reader.readAsText(file, "UTF-8");
+  } catch (err) {
+    showToast("Impossible de lire le fichier : " + err.message, "error");
+  }
 }
 

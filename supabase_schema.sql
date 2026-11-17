@@ -23,6 +23,9 @@ CREATE TABLE IF NOT EXISTS public.books (
   cover_url   text,
   content_type text DEFAULT 'text',  -- 'text', 'pdf', ou 'images'
   content     text,                  -- Texte complet avec chapitres
+  pdf_data    text,                  -- PDF natif encodé en base64 (legacy)
+  pages       jsonb,                 -- Pages images (data URLs ou URLs Storage)
+  file_url    text,                  -- URL publique du PDF dans Storage
   created_at  timestamptz DEFAULT now(),
   updated_at  timestamptz DEFAULT now()
 );
@@ -35,7 +38,10 @@ ALTER TABLE public.books
   ADD COLUMN IF NOT EXISTS isbn text,
   ADD COLUMN IF NOT EXISTS language text DEFAULT '',
   ADD COLUMN IF NOT EXISTS description text DEFAULT '',
-  ADD COLUMN IF NOT EXISTS content_type text DEFAULT 'text';
+  ADD COLUMN IF NOT EXISTS content_type text DEFAULT 'text',
+  ADD COLUMN IF NOT EXISTS pdf_data text,
+  ADD COLUMN IF NOT EXISTS pages jsonb,
+  ADD COLUMN IF NOT EXISTS file_url text;
 
 -- Trigger pour updated_at
 CREATE OR REPLACE FUNCTION update_updated_at()
@@ -116,10 +122,12 @@ CREATE POLICY "books_public_read"
   ON public.books FOR SELECT
   USING (true);
 
+-- Livres : lecture publique, écriture réservée aux utilisateurs authentifiés
+-- (créer le compte admin dans Authentication → Users ; désactiver les signups publics)
 DROP POLICY IF EXISTS "books_admin_write" ON public.books;
 CREATE POLICY "books_admin_write"
-  ON public.books FOR ALL
-  USING (true)  -- En prod, restreindre aux admins
+  ON public.books FOR ALL TO authenticated
+  USING (true)
   WITH CHECK (true);
 
 -- PROFILS : chaque utilisateur voit/modifie son profil
@@ -134,7 +142,7 @@ CREATE POLICY "profiles_own"
 -- Admins peuvent lire tous les profils
 DROP POLICY IF EXISTS "profiles_admin_read" ON public.user_profiles;
 CREATE POLICY "profiles_admin_read"
-  ON public.user_profiles FOR SELECT
+  ON public.user_profiles FOR SELECT TO authenticated
   USING (true);
 
 -- PROGRESSION : chaque utilisateur gère sa progression
@@ -162,7 +170,7 @@ DROP POLICY IF EXISTS "borrows_own" ON public.borrows;
 CREATE POLICY "borrows_own"
   ON public.borrows FOR ALL
   USING (auth.uid() = user_id OR user_id IS NULL)
-  WITH CHECK (true);
+  WITH CHECK (auth.uid() = user_id);
 
 -- =========================================================================
 -- INDEX POUR PERFORMANCE
@@ -173,6 +181,36 @@ CREATE INDEX IF NOT EXISTS idx_progress_user        ON public.reading_progress(u
 CREATE INDEX IF NOT EXISTS idx_progress_book        ON public.reading_progress(book_id);
 CREATE INDEX IF NOT EXISTS idx_favorites_user       ON public.favorites(user_id);
 CREATE INDEX IF NOT EXISTS idx_borrows_user         ON public.borrows(user_id);
+
+-- =========================================================================
+-- STORAGE : Bucket public pour les PDF et images des livres
+-- =========================================================================
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('media', 'media', true)
+ON CONFLICT (id) DO NOTHING;
+
+-- Lecture publique des fichiers
+DROP POLICY IF EXISTS "media_public_read" ON storage.objects;
+CREATE POLICY "media_public_read"
+  ON storage.objects FOR SELECT
+  USING (bucket_id = 'media');
+
+-- Écriture réservée aux utilisateurs authentifiés (admins)
+DROP POLICY IF EXISTS "media_public_insert" ON storage.objects;
+CREATE POLICY "media_insert"
+  ON storage.objects FOR INSERT TO authenticated
+  WITH CHECK (bucket_id = 'media');
+
+DROP POLICY IF EXISTS "media_public_update" ON storage.objects;
+CREATE POLICY "media_update"
+  ON storage.objects FOR UPDATE TO authenticated
+  USING (bucket_id = 'media')
+  WITH CHECK (bucket_id = 'media');
+
+DROP POLICY IF EXISTS "media_public_delete" ON storage.objects;
+CREATE POLICY "media_delete"
+  ON storage.objects FOR DELETE TO authenticated
+  USING (bucket_id = 'media');
 
 -- =========================================================================
 -- VÉRIFICATION : Lister les tables créées

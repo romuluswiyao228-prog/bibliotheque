@@ -1181,3 +1181,35 @@
   .isbn-search-bar input, .isbn-search-btn { width: 100%; }
   .add-book-tab-btn { padding: 10px 14px; font-size: 13px; }
 }
+
+/* ===== Import PDF groupé : barre de progression ===== */
+.pdf-batch-progress { margin-top: 14px; }
+.pdf-batch-bar {
+  height: 8px; border-radius: 99px; background: var(--color-surface-2, #e8e4dc);
+  overflow: hidden; margin-bottom: 8px;
+}
+.pdf-batch-fill {
+  height: 100%; width: 0%; border-radius: 99px;
+  background: var(--color-primary, #1f3a34);
+  transition: width .3s ease;
+}
+.pdf-batch-status { font-size: 13px; }
+.admin-pdf-drop-zone {
+  border: 2px dashed var(--color-border, #E6DFCC);
+  border-radius: 14px;
+  padding: 40px 30px;
+  text-align: center;
+  background: var(--color-surface-alt, #FBF8F1);
+  cursor: pointer;
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+.admin-pdf-drop-zone:hover,
+.admin-pdf-drop-zone.drag-over {
+  border-color: var(--color-accent, #B8874A);
+  background: #FBF5EC;
+}
+.pdf-drop-icon { font-size: 40px; margin-bottom: 12px; opacity: 0.8; }
+.pdf-drop-text strong { display: block; font-size: 15px; color: var(--color-primary-dark, #142722); margin-bottom: 5px; }
+.pdf-drop-text span { font-size: 13px; color: var(--color-text-muted, #746B5C); display: block; margin-bottom: 8px; }
+.pdf-drop-text small { font-size: 12px; color: #A09689; display: block; }
+.admin-pdf-drop-zone .btn { margin-top: 14px; }

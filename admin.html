@@ -22,8 +22,9 @@
     }
   </script>
 
-  <!-- Supabase SDK -->
+  <!-- Supabase SDK + configuration du projet -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="supabase-config.js"></script>
 
   <link rel="stylesheet" href="style.css" />
   <link rel="stylesheet" href="admin.css" />
@@ -38,8 +39,12 @@
       <p class="muted">Espace réservé à la gestion des collections, contenus et synchronisation.</p>
 
       <form id="adminLockForm">
+        <div class="field" id="adminEmailField" hidden>
+          <label for="adminEmail">Email administrateur</label>
+          <input type="email" id="adminEmail" placeholder="admin@exemple.com" autocomplete="username" />
+        </div>
         <div class="field">
-          <label for="adminPasscode">Code d'accès administrateur</label>
+          <label for="adminPasscode">Mot de passe</label>
           <input type="password" id="adminPasscode" placeholder="Mot de passe" autofocus required />
           <span class="error" id="adminPasscodeError"></span>
         </div>
@@ -193,7 +198,7 @@
           <!-- Navigation onglets -->
           <nav class="add-book-tabs-nav" role="tablist">
             <button class="add-book-tab-btn active" role="tab" aria-selected="true" data-tab="manual" id="tab-manual">
-              <span class="add-book-tab-icon">✍️</span> Ajout manuel
+              <span class="add-book-tab-icon">📕</span> Importer PDF
             </button>
             <button class="add-book-tab-btn" role="tab" aria-selected="false" data-tab="csv" id="tab-csv">
               <span class="add-book-tab-icon">📄</span> Import CSV / Excel
@@ -205,201 +210,26 @@
 
           <!-- ===== ONGLET 1 : AJOUT MANUEL ===== -->
           <div class="add-book-tab-panel active" id="panel-manual" role="tabpanel">
-            <form id="adminBookForm" novalidate>
-              <input type="hidden" id="adminBookId" />
-
-              <div class="add-manual-grid">
-                <!-- ISBN (en premier pour la détection de doublons) -->
-                <div class="field">
-                  <label for="bookIsbn">ISBN (optionnel)</label>
-                  <div class="field-isbn-row">
-                    <input type="text" id="bookIsbn" placeholder="Ex. 9782070360024" maxlength="17" />
-                    <button type="button" class="btn btn-outline btn-sm" id="isbnLookupManualBtn" title="Chercher via Open Library">🔍 Auto</button>
+            <div id="adminBookForm">
+              <div class="field field-full">
+                <label>📕 Importer un ou plusieurs livres PDF</label>
+                <div class="admin-pdf-drop-zone" id="pdfBatchDropZone">
+                  <div class="pdf-drop-icon">📕</div>
+                  <div class="pdf-drop-text">
+                    <strong>Déposez vos PDF ici</strong>
+                    <span>ou cliquez pour parcourir — plusieurs fichiers acceptés</span>
+                    <small>Titre, auteur et couverture sont extraits automatiquement</small>
                   </div>
-                  <div id="isbnAutoFillBadge" hidden>
-                    <span class="isbn-auto-badge">✨ Rempli automatiquement</span>
-                  </div>
+                  <label class="btn btn-primary" for="pdfBatchInput">📂 Choisir des PDF</label>
+                  <input type="file" id="pdfBatchInput" accept="application/pdf,.pdf" multiple style="display:none;" />
                 </div>
-
-                <!-- Titre -->
-                <div class="field">
-                  <label for="bookTitle">Titre du livre *</label>
-                  <input type="text" id="bookTitle" placeholder="Ex. Le Comte de Monte-Cristo" required />
-                  <span class="error" id="err-bookTitle"></span>
+                <div class="pdf-batch-progress" id="pdfBatchProgress" hidden>
+                  <div class="pdf-batch-bar"><div class="pdf-batch-fill" id="pdfBatchFill"></div></div>
+                  <div class="pdf-batch-status muted" id="pdfBatchStatus"></div>
                 </div>
-
-                <!-- Auteur -->
-                <div class="field">
-                  <label for="bookAuthor">Auteur *</label>
-                  <input type="text" id="bookAuthor" placeholder="Ex. Alexandre Dumas" required />
-                  <span class="error" id="err-bookAuthor"></span>
-                </div>
-
-                <!-- Catégorie -->
-                <div class="field">
-                  <label for="bookCategory">Catégorie / Genre *</label>
-                  <input type="text" id="bookCategory" list="adminCategoryList" placeholder="Ex. Roman, Science, Histoire..." required />
-                  <datalist id="adminCategoryList"></datalist>
-                  <span class="error" id="err-bookCategory"></span>
-                </div>
-
-                <!-- Année -->
-                <div class="field">
-                  <label for="bookYear">Année de publication</label>
-                  <input type="number" id="bookYear" placeholder="Ex. 1844" min="0" step="1" />
-                </div>
-
-                <!-- Langue -->
-                <div class="field">
-                  <label for="bookLanguage">Langue</label>
-                  <input type="text" id="bookLanguage" list="languageList" placeholder="Ex. Français, English..." />
-                  <datalist id="languageList">
-                    <option value="Français"><option value="English"><option value="Español">
-                    <option value="Deutsch"><option value="Italiano"><option value="Arabe">
-                  </datalist>
-                </div>
-
-                <!-- Exemplaires -->
-                <div class="field">
-                  <label for="bookCopies">Nombre total d'exemplaires *</label>
-                  <input type="number" id="bookCopies" placeholder="Ex. 3" required min="1" step="1" />
-                  <span class="error" id="err-bookCopies"></span>
-                </div>
-
-                <!-- Description -->
-                <div class="field field-full">
-                  <label for="bookDescription">Description / Résumé</label>
-                  <textarea id="bookDescription" rows="3" placeholder="Résumé de l'ouvrage, quatrième de couverture..."></textarea>
-                </div>
-
-                <!-- Couverture -->
-                <div class="field cover-field-group">
-                  <label for="bookCover">Photo de couverture (URL ou fichier)</label>
-                  <div class="cover-input-tabs">
-                    <input type="url" id="bookCover" placeholder="https://..." />
-                    <span class="or-separator">ou</span>
-                    <label class="btn btn-outline btn-upload" for="bookCoverFile">
-                      📁 Choisir une photo
-                      <input type="file" id="bookCoverFile" accept="image/*" style="display:none;" />
-                    </label>
-                  </div>
-                  <div class="cover-preview-container" id="adminCoverPreviewContainer" hidden>
-                    <img id="adminCoverPreviewImg" src="" alt="Aperçu couverture" />
-                    <div class="cover-preview-info">
-                      <span>Photo sélectionnée</span>
-                      <button type="button" class="btn btn-ghost btn-sm" id="adminRemoveCoverBtn">✕ Supprimer l'image</button>
-                    </div>
-                  </div>
-                </div>
-
-                <!-- Type de contenu -->
-                <div class="field field-full">
-                  <label>📂 Type de document à importer *</label>
-                  <div class="content-type-selector" id="contentTypeSelector">
-                    <label class="content-type-btn active" data-type="text">
-                      <input type="radio" name="bookContentType" value="text" checked />
-                      <span class="ct-icon">📝</span>
-                      <strong>Texte / Chapitres</strong>
-                      <small>Coller ou importer un .txt — découpage en chapitres automatique</small>
-                    </label>
-                    <label class="content-type-btn" data-type="pdf">
-                      <input type="radio" name="bookContentType" value="pdf" />
-                      <span class="ct-icon">📕</span>
-                      <strong>PDF natif (avec images)</strong>
-                      <small>Le PDF est conservé fidèlement, rendu page par page dans la liseuse</small>
-                    </label>
-                    <label class="content-type-btn" data-type="images">
-                      <input type="radio" name="bookContentType" value="images" />
-                      <span class="ct-icon">🖼️</span>
-                      <strong>Images / Pages scannées</strong>
-                      <small>Importer plusieurs images (.jpg, .png, .webp) comme pages de livre</small>
-                    </label>
-                  </div>
-                </div>
-
-                <!-- Panneau Texte -->
-                <div class="field field-full admin-content-panel" id="panelText">
-                  <div class="field-head-row">
-                    <label for="bookTextContent">📖 Contenu textuel complet / Chapitres</label>
-                    <div class="field-head-actions">
-                      <label class="btn btn-outline btn-sm btn-upload" for="bookTxtFileImport">
-                        📥 Importer un .txt
-                        <input type="file" id="bookTxtFileImport" accept=".txt" style="display:none;" />
-                      </label>
-                      <label class="btn btn-outline btn-sm btn-upload" for="bookPdfTextImport">
-                        📄 Extraire texte d'un PDF
-                        <input type="file" id="bookPdfTextImport" accept="application/pdf" style="display:none;" />
-                      </label>
-                    </div>
-                  </div>
-                  <small class="hint" id="bookPdfImportStatus" hidden></small>
-                  <textarea id="bookTextContent" rows="12" placeholder="Collez ici le texte du livre, ou importez un .txt. Séparez les chapitres avec '--- Chapitre : Titre ---'"></textarea>
-                  <small class="hint">💡 Format chapitres : <code>--- Chapitre 1 : Titre ---</code> puis le texte. Chaque chapitre devient une section dans la liseuse.</small>
-                </div>
-
-                <!-- Panneau PDF natif -->
-                <div class="field field-full admin-content-panel" id="panelPdf" hidden>
-                  <label>📕 Importer le PDF natif (avec images et mise en page)</label>
-                  <div class="admin-pdf-drop-zone" id="adminPdfDropZone">
-                    <div class="pdf-drop-icon">📕</div>
-                    <div class="pdf-drop-text">
-                      <strong>Déposez votre PDF ici</strong>
-                      <span>ou cliquez pour parcourir</span>
-                      <small>Formats acceptés : .pdf — Taille recommandée : &lt; 50 Mo</small>
-                    </div>
-                    <label class="btn btn-primary" for="bookPdfNativeImport">
-                      📂 Choisir un fichier PDF
-                      <input type="file" id="bookPdfNativeImport" accept="application/pdf" style="display:none;" />
-                    </label>
-                  </div>
-                  <div class="admin-pdf-info" id="adminPdfInfo" hidden>
-                    <div class="pdf-info-row">
-                      <span class="pdf-info-icon">📕</span>
-                      <div>
-                        <strong id="adminPdfFileName">fichier.pdf</strong>
-                        <small id="adminPdfFileSize">0 Ko · 0 pages</small>
-                      </div>
-                      <button type="button" class="btn btn-ghost btn-sm" id="adminPdfRemoveBtn">✕ Supprimer</button>
-                    </div>
-                    <div class="admin-pdf-pages-preview" id="adminPdfPagesPreview">
-                      <span class="muted">⏳ Génération des aperçus…</span>
-                    </div>
-                  </div>
-                  <input type="hidden" id="bookPdfData" />
-                  <input type="hidden" id="bookPdfPageCount" value="0" />
-                </div>
-
-                <!-- Panneau Images -->
-                <div class="field field-full admin-content-panel" id="panelImages" hidden>
-                  <label>🖼️ Importer les pages comme images</label>
-                  <div class="admin-images-drop-zone" id="adminImagesDropZone">
-                    <div class="pdf-drop-icon">🖼️</div>
-                    <div class="pdf-drop-text">
-                      <strong>Déposez vos images ici</strong>
-                      <span>ou cliquez pour parcourir (sélection multiple)</span>
-                      <small>Formats : .jpg, .jpeg, .png, .webp — ordre = ordre des pages</small>
-                    </div>
-                    <label class="btn btn-primary" for="bookImagesImport">
-                      📂 Choisir les images
-                      <input type="file" id="bookImagesImport" accept="image/*" multiple style="display:none;" />
-                    </label>
-                  </div>
-                  <div class="admin-images-preview-grid" id="adminImagesPreviewGrid" hidden>
-                    <div class="images-preview-header">
-                      <span id="adminImageCount">0 page(s) chargée(s)</span>
-                      <button type="button" class="btn btn-ghost btn-sm" id="adminImagesRemoveAllBtn">✕ Tout supprimer</button>
-                    </div>
-                    <div class="images-thumbs-grid" id="adminImagesThumbs"></div>
-                  </div>
-                  <input type="hidden" id="bookImagesData" />
-                </div>
+                <small class="hint">Chaque PDF devient un livre : métadonnées extraites via pdf.js, couverture = première page, fichier envoyé sur Supabase Storage. Catégorie par défaut : <b>Non classé</b>.</small>
               </div>
-
-              <div class="form-actions">
-                <button type="submit" class="btn btn-primary btn-lg" id="adminSubmitBookBtn">💾 Enregistrer le livre</button>
-                <button type="button" class="btn btn-ghost btn-lg" id="adminCancelEditBtn" hidden>Annuler la modification</button>
-              </div>
-            </form>
+            </div>
           </div>
 
           <!-- ===== ONGLET 2 : IMPORT CSV / EXCEL ===== -->
@@ -698,6 +528,29 @@
   </div>
 
   <!-- ============ MODALE CONFIRMATION SUPPRESSION ============ -->
+  <!-- ============ MODALE D'ÉDITION RAPIDE (titre / auteur / catégorie) ============ -->
+  <div class="modal-overlay" id="adminEditOverlay" hidden>
+    <div class="modal">
+      <h3 id="adminEditTitle">✏️ Modifier le livre</h3>
+      <div class="field">
+        <label for="editBookTitle">Titre</label>
+        <input type="text" id="editBookTitle" />
+      </div>
+      <div class="field">
+        <label for="editBookAuthor">Auteur</label>
+        <input type="text" id="editBookAuthor" />
+      </div>
+      <div class="field">
+        <label for="editBookCategory">Catégorie</label>
+        <input type="text" id="editBookCategory" placeholder="Non classé" />
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" id="adminEditCancel">Annuler</button>
+        <button class="btn btn-primary" id="adminEditSave">💾 Enregistrer</button>
+      </div>
+    </div>
+  </div>
+
   <div class="modal-overlay" id="adminConfirmOverlay" hidden>
     <div class="modal">
       <h3 id="adminConfirmTitle">Confirmer la suppression</h3>

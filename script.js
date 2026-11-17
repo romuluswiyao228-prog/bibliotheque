@@ -249,7 +249,7 @@ function renderProfileView() {
     const prog = allProg[b.id];
     const statusLabel = prog.isFinished ? 'Terminé ✓' : 'En cours';
     const thumbHTML = b.cover
-      ? `<div class="profile-read-thumb"><img src="${escapeAttr(b.cover)}" alt="" loading="lazy" onerror="this.style.display='none'" /></div>`
+      ? `<div class="profile-read-thumb"><img src="${escapeAttr(b.cover)}" alt="" loading="lazy" decoding="async" width="48" height="64" onerror="this.style.display='none'" /></div>`
       : `<div class="profile-read-thumb" style="background:${colorForCategory(b.category)};">${escapeHTML(b.title.slice(0,2))}</div>`;
     return `
       <div class="profile-read-item" data-id="${b.id}">
@@ -275,7 +275,7 @@ function renderProfileView() {
   favGrid.innerHTML = favBooks.map(b => {
     const spineBg = colorForCategory(b.category);
     const coverHTML = b.cover
-      ? `<img src="${escapeAttr(b.cover)}" alt="${escapeAttr(b.title)}" loading="lazy" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
+      ? `<img src="${escapeAttr(b.cover)}" alt="${escapeAttr(b.title)}" loading="lazy" decoding="async" width="120" height="180" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
          <div class="profile-fav-fallback" style="background:${spineBg}; display:none;">
            <span>\ud83d\udcd6</span>
            <div class="fav-title">${escapeHTML(b.title)}</div>
@@ -317,6 +317,136 @@ let books = loadBooks();
 let editingId = null;
 let pendingDeleteId = null;
 
+/* ---------------------------------------------------------------------
+   3b) CATALOGUE CLOUD SUPABASE (lecture publique)
+   --------------------------------------------------------------------- */
+function isSupabaseConfigured() {
+  return !!(window.SUPABASE_URL && window.SUPABASE_ANON_KEY &&
+    !window.SUPABASE_URL.includes("VOTRE") && !window.SUPABASE_ANON_KEY.includes("VOTRE") &&
+    window.supabase && window.supabase.createClient);
+}
+
+function mapCloudBook(r) {
+  return {
+    id: r.biblio_id || r.id,
+    isbn: r.isbn || "",
+    title: r.title || "",
+    author: r.author || "",
+    category: r.category || "",
+    year: r.year ?? null,
+    language: r.language || "",
+    description: r.description || "",
+    maxCopies: r.max_copies ?? 1,
+    copies: r.copies ?? 1,
+    cover: r.cover_url || "",
+    contentType: r.content_type || "text",
+    content: r.content || "",
+    pdfData: r.pdf_data || undefined,
+    pdfUrl: r.file_url || undefined,
+    pages: r.pages || undefined,
+    _needsHeavy: r.content == null && r.pdf_data == null && r.pages == null
+  };
+}
+
+const CLOUD_LIST_COLS = "biblio_id,isbn,title,author,category,year,language,description,max_copies,copies,cover_url,content_type,file_url";
+const CLOUD_CACHE_KEY = "biblio_cloud_catalog";
+const CLOUD_CACHE_TS_KEY = "biblio_cloud_catalog_ts";
+const CLOUD_CACHE_TTL = 5 * 60 * 1000;
+let _supaClient = null;
+
+function getSupabaseClient() {
+  if (!_supaClient && isSupabaseConfigured()) {
+    _supaClient = window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY);
+  }
+  return _supaClient;
+}
+
+function saveCloudCatalogCache(list) {
+  try {
+    sessionStorage.setItem(CLOUD_CACHE_KEY, JSON.stringify(list));
+    sessionStorage.setItem(CLOUD_CACHE_TS_KEY, String(Date.now()));
+  } catch (e) {}
+}
+
+function loadCloudCatalogCache() {
+  try {
+    const raw = sessionStorage.getItem(CLOUD_CACHE_KEY);
+    const ts = parseInt(sessionStorage.getItem(CLOUD_CACHE_TS_KEY) || "0", 10);
+    if (!raw || !ts || Date.now() - ts > CLOUD_CACHE_TTL) return null;
+    const list = JSON.parse(raw);
+    return Array.isArray(list) ? list : null;
+  } catch (e) { return null; }
+}
+
+function invalidateCloudCatalogCache() {
+  try {
+    sessionStorage.removeItem(CLOUD_CACHE_KEY);
+    sessionStorage.removeItem(CLOUD_CACHE_TS_KEY);
+  } catch (e) {}
+}
+
+// Stratégie : cache session -> affichage immédiat -> refresh en arrière-plan
+async function initCloudCatalog() {
+  const client = getSupabaseClient();
+  if (!client) return;
+  _catalogLoading = true;
+
+  const cached = loadCloudCatalogCache();
+  if (cached && cached.length) {
+    books = cached;
+    renderAll();
+  } else if (!books.length) {
+    showListSkeleton();
+  }
+
+  try {
+    const { data, error } = await client.from("books").select(CLOUD_LIST_COLS).order("created_at", { ascending: true });
+    if (error) {
+      console.warn("[Supabase] Erreur catalogue :", error.message);
+      return;
+    }
+    const list = (data || []).map(mapCloudBook).filter(b => b.id && b.title);
+    saveCloudCatalogCache(list);
+    const sig = l => JSON.stringify(l.map(b => b.id + "|" + b.title + "|" + b.author + "|" + b.copies + "|" + b.category));
+    const changed = sig(list) !== sig(books);
+    books = list.length ? list : books;
+    if (changed || !cached) renderAll();
+  } catch (e) {
+    console.warn("[Supabase] Catalogue cloud indisponible, utilisation du LocalStorage.", e);
+  } finally {
+    _catalogLoading = false;
+    renderAll();
+  }
+}
+
+// Charge à la demande les champs lourds (content, pdf_data, pages) d'un livre cloud
+async function ensureBookHeavyContent(book) {
+  if (!book || !book._needsHeavy) return book;
+  // Rien à charger si le contenu utile est déjà présent (pdfUrl, pages, content)
+  if (book.contentType === "pdf" && (book.pdfUrl || book.pdfData)) { book._needsHeavy = false; return book; }
+  if (book.contentType === "images" && Array.isArray(book.pages) && book.pages.length) { book._needsHeavy = false; return book; }
+  if (book.contentType === "text" && book.content) { book._needsHeavy = false; return book; }
+  const client = getSupabaseClient();
+  if (!client || !book.id) { book._needsHeavy = false; return book; }
+  try {
+    const { data, error } = await client.from("books")
+      .select("content,pdf_data,pages")
+      .eq("biblio_id", book.id)
+      .maybeSingle();
+    if (!error && data) {
+      book.content = data.content || "";
+      book.pdfData = data.pdf_data || undefined;
+      book.pages = data.pages || undefined;
+    }
+  } catch (e) {
+    console.warn("[Supabase] Chargement du contenu impossible pour", book.id, e);
+  }
+  book._needsHeavy = false;
+  return book;
+}
+
+
+
 // Filtres de l'espace personnel
 let personalFilter = "all"; // 'all', 'reading', 'finished', 'unread', 'favorites'
 let personalQuery = "";
@@ -355,6 +485,11 @@ function switchView(viewName) {
     document.getElementById("viewSubtitle").textContent = VIEW_META[viewName].subtitle;
   }
 
+  // Animation d'apparition du titre + indicateur de nav glissant
+  const tt = document.querySelector(".topbar-title");
+  if (tt) { tt.classList.remove("tt-anim"); void tt.offsetWidth; tt.classList.add("tt-anim"); }
+  updateNavIndicator();
+
   renderAll();
 }
 
@@ -367,13 +502,21 @@ document.getElementById("mainNav").addEventListener("click", (e) => {
 /* ---------------------------------------------------------------------
    5) TOASTS & CONFIRMATIONS
    --------------------------------------------------------------------- */
+function debounce(fn, ms) {
+  let t = null;
+  return function (...args) {
+    clearTimeout(t);
+    t = setTimeout(() => fn.apply(this, args), ms);
+  };
+}
+
 function showToast(message, type = "info") {
   const container = document.getElementById("toastContainer");
   const toast = document.createElement("div");
   toast.className = "toast " + type;
   toast.textContent = message;
   container.appendChild(toast);
-  setTimeout(() => toast.remove(), 3200);
+  setTimeout(() => { toast.classList.add("toast-out"); setTimeout(() => toast.remove(), 300); }, 2900);
 }
 
 const confirmOverlay = document.getElementById("confirmOverlay");
@@ -407,7 +550,7 @@ document.getElementById("confirmOkBtn").addEventListener("click", () => {
 function renderCoverThumbHTML(book) {
   if (book.cover) {
     return `<div class="table-book-cover">
-      <img src="${escapeAttr(book.cover)}" alt="${escapeAttr(book.title)}" loading="lazy" onerror="this.parentElement.innerHTML='📖'" />
+      <img src="${escapeAttr(book.cover)}" alt="${escapeAttr(book.title)}" loading="lazy" decoding="async" width="34" height="46" onerror="this.parentElement.innerHTML='📖'" />
     </div>`;
   }
   const bg = colorForCategory(book.category);
@@ -490,9 +633,10 @@ function applyReaderSettings() {
   readerArticle.classList.toggle("font-sans", !readerSettings.fontSerif);
 }
 
-function openReader(bookId, targetChapter = null) {
+async function openReader(bookId, targetChapter = null) {
   const book = books.find(b => b.id === bookId);
   if (!book) return;
+  await ensureBookHeavyContent(book); // contenu chargé à la demande (livres cloud)
 
   activeReadingBook = book;
   const prog = getBookProgress(book.id);
@@ -504,6 +648,15 @@ function openReader(bookId, targetChapter = null) {
   applyReaderSettings();
   readerOverlay.hidden = false;
   document.body.style.overflow = "hidden";
+
+  // Réinitialiser l'état de progression et fermer les panneaux latéraux
+  _readerProgressDirty = false;
+  _readerFinishedFlag = false;
+  _searchMatches = [];
+  readerTocSidebar.hidden = true;
+  document.getElementById("readerBookmarksSidebar").hidden = true;
+  document.getElementById("readerSearchBar").hidden = true;
+  document.getElementById("readerSearchCount").textContent = "";
 
   if (ct === "pdf") {
     openPdfReader(book, prog);
@@ -534,11 +687,13 @@ function openReader(bookId, targetChapter = null) {
 }
 
 function closeReader() {
-  if (activeReadingBook) {
+  if (activeReadingBook && _readerProgressDirty && !_readerFinishedFlag) {
     updateProgressAndSave();
   }
   readerOverlay.hidden = true;
   document.body.style.overflow = "";
+  const wrap = document.getElementById("readerPdfCanvasWrap");
+  if (wrap) wrap.style.backgroundImage = "";
   activeReadingBook = null;
   renderAll();
 }
@@ -584,6 +739,7 @@ function updateReadingProgressUI() {
 
 function updateProgressAndSave(isFinished = false) {
   if (!activeReadingBook) return;
+  if (!isFinished && !_readerProgressDirty) return;
   const ct = activeReadingBook.contentType || "text";
   if (ct === "pdf" || ct === "images") {
     const total = ct === "pdf" ? (_pdfDoc?.numPages || activeReadingBook.pageCount || 1) : _imagesPages.length;
@@ -603,6 +759,72 @@ function updateProgressAndSave(isFinished = false) {
 // Variables de contrôle du rendu
 let _currentRenderTask = null;
 let _isRendering = false;
+let _pdfDoc = null;
+let _currentPage = 1;
+let _pdfPagesSeen = new Set();
+
+// Cache des documents pdf.js : la réouverture d'un livre déjà consulté est quasi instantanée
+const _pdfDocCache = new Map();
+const PDF_DOC_CACHE_MAX = 3;
+
+async function getPdfDocument(book) {
+  const key = book.id + "|" + (book.pdfUrl || "data");
+  const hit = _pdfDocCache.get(key);
+  if (hit) { hit.lastUsed = Date.now(); return hit.promise; }
+
+  let promise;
+  const cMap = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/cmaps/";
+  if (book.pdfUrl) {
+    // Chargement progressif : pdf.js ne télécharge que les plages nécessaires (Range requests, supportées par Supabase Storage)
+    promise = pdfjsLib.getDocument({
+      url: book.pdfUrl,
+      disableAutoFetch: true,
+      disableStream: false,
+      rangeChunkSize: 262144,
+      cMapUrl: cMap,
+      cMapPacked: true
+    }).promise;
+  } else {
+    const base64Str = book.pdfData.includes(",") ? book.pdfData.split(",")[1] : book.pdfData;
+    const binaryStr = atob(base64Str);
+    const uint8 = new Uint8Array(binaryStr.length);
+    for (let i = 0; i < binaryStr.length; i++) uint8[i] = binaryStr.charCodeAt(i);
+    promise = pdfjsLib.getDocument({ data: uint8, cMapUrl: cMap, cMapPacked: true }).promise;
+  }
+
+  const entry = { promise, lastUsed: Date.now() };
+  _pdfDocCache.set(key, entry);
+  promise.catch(() => { if (_pdfDocCache.get(key) === entry) _pdfDocCache.delete(key); });
+
+  // Éviction LRU : on garde au plus PDF_DOC_CACHE_MAX documents en mémoire
+  if (_pdfDocCache.size > PDF_DOC_CACHE_MAX) {
+    let oldestKey = null, oldest = Infinity;
+    _pdfDocCache.forEach((v, k) => { if (v.lastUsed < oldest) { oldest = v.lastUsed; oldestKey = k; } });
+    const old = _pdfDocCache.get(oldestKey);
+    _pdfDocCache.delete(oldestKey);
+    if (old) old.promise.then((d) => d.destroy()).catch(() => {});
+  }
+  return promise;
+}
+
+// Préchargement anticipé : réchauffe le cache HTTP (Range 0-512 Ko) puis initialise pdf.js
+const _pdfPrefetchTimers = new Map();
+function prefetchBookPdf(book) {
+  if (!book || (book.contentType || "text") !== "pdf" || (!book.pdfUrl && !book.pdfData)) return;
+  const key = book.id + "|" + (book.pdfUrl || "data");
+  if (_pdfDocCache.has(key) || _pdfPrefetchTimers.has(book.id)) return;
+  _pdfPrefetchTimers.set(book.id, setTimeout(() => {
+    _pdfPrefetchTimers.delete(book.id);
+    if (book.pdfUrl) {
+      try { fetch(book.pdfUrl, { headers: { Range: "bytes=0-524287" } }).catch(() => {}); } catch (e) {}
+    }
+    getPdfDocument(book).catch(() => {});
+  }, 200));
+}
+let _pdfZoom = 1.0;
+let _imagesPages = [];
+let _readerProgressDirty = false;
+let _readerFinishedFlag = false;
 
 async function openPdfReader(book, prog) {
   document.getElementById("readerScrollArea").hidden = true;
@@ -620,6 +842,15 @@ async function openPdfReader(book, prog) {
   }
   _isRendering = false;
   _pdfDoc = null;
+  _pdfPagesSeen.clear();
+
+  // Aperçu instantané : la couverture s'affiche en fond pendant le chargement
+  const pdfWrap = document.getElementById("readerPdfCanvasWrap");
+  if (pdfWrap) {
+    pdfWrap.style.backgroundImage = book.cover ? `url('${escapeAttr(book.cover)}')` : "";
+    pdfWrap.style.backgroundSize = "cover";
+    pdfWrap.style.backgroundPosition = "center";
+  }
 
   // Réinitialiser le canvas
   const canvas = document.getElementById("readerPdfCanvas");
@@ -640,7 +871,7 @@ async function openPdfReader(book, prog) {
   document.getElementById("readerPageInput").value = _currentPage;
   updatePdfProgressUI(_currentPage, totalPages);
 
-  if (!book.pdfData) {
+  if (!book.pdfData && !book.pdfUrl) {
     document.getElementById("readerPdfCanvasWrap").innerHTML = `<p class="empty-state">⚠️ Données PDF introuvables.</p>`;
     return;
   }
@@ -648,19 +879,7 @@ async function openPdfReader(book, prog) {
   try {
     document.getElementById("readerPdfLoading").hidden = false;
 
-    // Conversion base64 → Uint8Array via atob() (méthode fiable, sans fetch)
-    const base64Str = book.pdfData.includes(',') ? book.pdfData.split(",")[1] : book.pdfData;
-    const binaryStr = atob(base64Str);
-    const uint8 = new Uint8Array(binaryStr.length);
-    for (let i = 0; i < binaryStr.length; i++) {
-      uint8[i] = binaryStr.charCodeAt(i);
-    }
-
-    _pdfDoc = await pdfjsLib.getDocument({
-      data: uint8,
-      cMapUrl: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/cmaps/',
-      cMapPacked: true
-    }).promise;
+    _pdfDoc = await getPdfDocument(book); // doc mis en cache + chargement progressif (Range)
 
     document.getElementById("readerPdfLoading").hidden = true;
     document.getElementById("readerPageTotal").textContent = `/ ${_pdfDoc.numPages}`;
@@ -715,7 +934,7 @@ async function renderPdfPage(pageNum) {
     // Vérification de sécurité (éviter NaN ou 0)
     const finalScale = (isFinite(scaleToFit) && scaleToFit > 0) ? scaleToFit * _pdfZoom : _pdfZoom;
 
-    const dpr = window.devicePixelRatio || 1;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2); // résolution adaptée à l'écran, plafonnée
     const viewport = page.getViewport({ scale: finalScale });
 
     // Dimensions physiques du canvas (haute résolution pour écrans Retina)
@@ -740,6 +959,19 @@ async function renderPdfPage(pageNum) {
     document.getElementById("readerPageInput").value = pageNum;
     updatePdfProgressUI(pageNum, _pdfDoc.numPages);
     updateProgressAndSave();
+
+    // Précharge les 2 pages adjacentes et libère les pages éloignées de la mémoire
+    for (let d = -2; d <= 2; d++) {
+      const p = pageNum + d;
+      if (p >= 1 && p <= _pdfDoc.numPages) _pdfDoc.getPage(p).catch(() => {});
+    }
+    _pdfPagesSeen.add(pageNum);
+    for (const p of [..._pdfPagesSeen]) {
+      if (Math.abs(p - pageNum) > 4) {
+        _pdfDoc.getPage(p).then((pg) => pg.cleanup()).catch(() => {});
+        _pdfPagesSeen.delete(p);
+      }
+    }
   } catch (err) {
     _currentRenderTask = null;
     _isRendering = false;
@@ -853,6 +1085,7 @@ function renderBookmarksList() {
       }
       const page = parseInt(li.dataset.page, 10);
       const ct = activeReadingBook.contentType || "text";
+      _readerProgressDirty = true;
       if (ct === "text") { activeChapterIndex = Math.max(0, page - 1); renderActiveChapter(); }
       else if (ct === "pdf") await renderPdfPage(page);
       else if (ct === "images") renderImagePage(page);
@@ -879,6 +1112,7 @@ function performSearch(query) {
 
 function navigateSearchResult(delta) {
   if (!_searchMatches.length) return;
+  _readerProgressDirty = true;
   _searchCurrentIdx = (_searchCurrentIdx + delta + _searchMatches.length) % _searchMatches.length;
   activeChapterIndex = _searchMatches[_searchCurrentIdx];
   renderActiveChapter();
@@ -890,19 +1124,22 @@ function navigateSearchResult(delta) {
 document.getElementById("readerCloseBtn").addEventListener("click", closeReader);
 
 document.getElementById("readerPrevChapterBtn").addEventListener("click", () => {
-  if (activeChapterIndex > 0) { activeChapterIndex--; renderActiveChapter(); updateProgressAndSave(); }
+  if (activeChapterIndex > 0) { activeChapterIndex--; _readerProgressDirty = true; renderActiveChapter(); updateProgressAndSave(); }
 });
 document.getElementById("readerNextChapterBtn").addEventListener("click", () => {
-  if (activeChapterIndex < readerChapters.length - 1) { activeChapterIndex++; renderActiveChapter(); updateProgressAndSave(); }
+  if (activeChapterIndex < readerChapters.length - 1) { activeChapterIndex++; _readerProgressDirty = true; renderActiveChapter(); updateProgressAndSave(); }
 });
 document.getElementById("readerMarkFinishedBtn").addEventListener("click", () => {
   updateProgressAndSave(true);
+  _readerFinishedFlag = true;
   showToast(`Félicitations ! Vous avez terminé « ${activeReadingBook.title} ».`, "success");
   closeReader();
 });
 document.getElementById("readerResetProgressBtn").addEventListener("click", () => {
   if (confirm("Réinitialiser votre progression sur ce livre ?")) {
     setBookProgress(activeReadingBook.id, { percent: 0, chapter: 0, isFinished: false });
+    _readerProgressDirty = false;
+    _readerFinishedFlag = false;
     _currentPage = 1;
     const ct = activeReadingBook?.contentType || "text";
     if (ct === "pdf") renderPdfPage(1);
@@ -915,6 +1152,7 @@ document.getElementById("readerResetProgressBtn").addEventListener("click", () =
 // Navigation par page (PDF/Images)
 document.getElementById("readerPagePrev").addEventListener("click", async () => {
   if (_currentPage <= 1) return;
+  _readerProgressDirty = true;
   const ct = activeReadingBook?.contentType;
   if (ct === "pdf") await renderPdfPage(_currentPage - 1);
   else if (ct === "images") renderImagePage(_currentPage - 1);
@@ -923,12 +1161,14 @@ document.getElementById("readerPageNext").addEventListener("click", async () => 
   const ct = activeReadingBook?.contentType;
   const total = ct === "pdf" ? (_pdfDoc?.numPages || 1) : _imagesPages.length;
   if (_currentPage >= total) return;
+  _readerProgressDirty = true;
   if (ct === "pdf") await renderPdfPage(_currentPage + 1);
   else if (ct === "images") renderImagePage(_currentPage + 1);
 });
 document.getElementById("readerPageInput").addEventListener("change", async (e) => {
   const p = parseInt(e.target.value, 10);
   if (isNaN(p)) return;
+  _readerProgressDirty = true;
   const ct = activeReadingBook?.contentType;
   if (ct === "pdf") await renderPdfPage(p);
   else if (ct === "images") renderImagePage(p);
@@ -972,6 +1212,7 @@ readerTocList.addEventListener("click", (e) => {
   const item = e.target.closest(".reader-toc-item");
   if (!item) return;
   activeChapterIndex = parseInt(item.dataset.idx, 10);
+  _readerProgressDirty = true;
   renderActiveChapter();
   updateProgressAndSave();
   if (window.innerWidth < 800) readerTocSidebar.hidden = true;
@@ -1060,10 +1301,10 @@ readingFilterPills.addEventListener("click", (e) => {
   renderPersonalView();
 });
 
-personalSearchInput.addEventListener("input", (e) => {
+personalSearchInput.addEventListener("input", debounce((e) => {
   personalQuery = e.target.value.trim().toLowerCase();
   renderPersonalView();
-});
+}, 250));
 
 personalCategorySelect.addEventListener("change", (e) => {
   personalCategory = e.target.value;
@@ -1082,9 +1323,9 @@ function getPersonalFilteredBooks() {
   let list = books.filter(b => {
     const prog = allProg[b.id] || { percent: 0, isFinished: false };
     const matchesQuery = !personalQuery ||
-      b.title.toLowerCase().includes(personalQuery) ||
-      b.author.toLowerCase().includes(personalQuery) ||
-      b.category.toLowerCase().includes(personalQuery);
+      (b.title || "").toLowerCase().includes(personalQuery) ||
+      (b.author || "").toLowerCase().includes(personalQuery) ||
+      (b.category || "").toLowerCase().includes(personalQuery);
 
     const matchesCategory = !personalCategory || b.category === personalCategory;
 
@@ -1155,7 +1396,7 @@ function renderPersonalView() {
   const filtered = getPersonalFilteredBooks();
   emptyState.hidden = filtered.length !== 0;
 
-  grid.innerHTML = filtered.map(b => {
+  grid.innerHTML = filtered.map((b, idx) => {
     const prog = allProg[b.id] || { percent: 0, isFinished: false };
     const fav = favs.includes(b.id);
     const spineBg = colorForCategory(b.category);
@@ -1168,7 +1409,7 @@ function renderPersonalView() {
     }
 
     const coverMarkup = b.cover
-      ? `<img class="p-card-img" src="${escapeAttr(b.cover)}" alt="${escapeAttr(b.title)}" loading="lazy" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
+      ? `<img class="p-card-img" src="${escapeAttr(b.cover)}" alt="${escapeAttr(b.title)}" loading="lazy" decoding="async" width="200" height="300" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
          <div class="p-card-fallback-cover" style="background:${spineBg}; display:none;">
            <span class="p-fallback-deco">§</span>
            <div class="p-fallback-title">${escapeHTML(b.title)}</div>
@@ -1183,7 +1424,7 @@ function renderPersonalView() {
     const actionLabel = prog.isFinished ? "Relire" : (prog.percent > 0 ? "Continuer" : "Lire");
 
     return `
-      <div class="personal-book-card" data-id="${b.id}">
+      <div class="personal-book-card" style="--i:${idx}" data-id="${b.id}">
         <div class="p-card-cover-wrap">
           ${coverMarkup}
           <button class="btn-fav ${fav ? 'active' : ''}" data-action="favorite" data-id="${b.id}" title="${fav ? 'Retirer des favoris' : 'Ajouter aux favoris'}">
@@ -1279,28 +1520,36 @@ const sortSelect = document.getElementById("sortSelect");
 
 // Active filter state for the grid view
 let _gridActiveCat = "";
+const LIST_PAGE_SIZE = 24;
+let _listLimit = LIST_PAGE_SIZE;
+let _listSig = "";
+let _catalogLoading = false;
 
-searchInput.addEventListener("input", renderListView);
-sortSelect.addEventListener("change", renderListView);
-
-function getFilteredSortedBooks() {
-  const query = searchInput.value.trim().toLowerCase();
-  let result = books.filter(b =>
-    b.title.toLowerCase().includes(query) ||
-    b.author.toLowerCase().includes(query) ||
-    b.category.toLowerCase().includes(query)
-  );
-
-  const sortMode = sortSelect.value;
-  if (sortMode === "alpha") {
-    result = result.slice().sort((a, b) => a.title.localeCompare(b.title, "fr"));
-  } else if (sortMode === "category") {
-    result = result.slice().sort((a, b) => a.category.localeCompare(b.category, "fr"));
-  } else if (sortMode === "year") {
-    result = result.slice().sort((a, b) => b.year - a.year);
-  }
-  return result;
+function skeletonCardsHTML(count) {
+  return Array.from({ length: count }, () =>
+    '<div class="skeleton-card"><div class="skeleton-cover"></div><div class="skeleton-line"></div><div class="skeleton-line short"></div></div>'
+  ).join("");
 }
+
+function skeletonRowsHTML(count) {
+  return Array.from({ length: count }, () =>
+    '<div class="skeleton-row"><div class="skeleton-thumb"></div><div class="skeleton-line" style="flex:1"></div><div class="skeleton-line short"></div></div>'
+  ).join("");
+}
+
+function showListSkeleton() {
+  const gridView = document.getElementById("booksGridView");
+  const listView = document.getElementById("booksListView");
+  if (!gridView) return;
+  gridView.hidden = false;
+  if (listView) listView.hidden = true;
+  gridView.innerHTML = skeletonCardsHTML(8);
+  const countEl = document.getElementById("booksResultsCount");
+  if (countEl) countEl.textContent = "Chargement du catalogue…";
+}
+
+searchInput.addEventListener("input", debounce(renderListView, 250));
+sortSelect.addEventListener("change", renderListView);
 
 /* ---------------------------------------------------------------------
    13) RENDU — TABLEAU DE BORD
@@ -1375,6 +1624,10 @@ function renderDashboard() {
           </td>
         </tr>`).join("")
     : `<tr><td colspan="7" class="empty-state">Aucun livre pour le moment. Ajoutez votre premier livre !</td></tr>`;
+
+  tbody.querySelectorAll("tr").forEach((r, i) => r.style.setProperty("--i", i));
+  enhanceStatCards(cardsEl);
+  renderCarousel();
 }
 
 document.querySelector("#recentTable").addEventListener("click", (e) => {
@@ -1411,17 +1664,17 @@ function getFilteredSortedBooks() {
   const query = searchInput.value.trim().toLowerCase();
   let result = books.filter(b => {
     const matchesQ = !query ||
-      b.title.toLowerCase().includes(query) ||
-      b.author.toLowerCase().includes(query) ||
-      b.category.toLowerCase().includes(query);
+      (b.title || "").toLowerCase().includes(query) ||
+      (b.author || "").toLowerCase().includes(query) ||
+      (b.category || "").toLowerCase().includes(query);
     const matchesCat = !_gridActiveCat || b.category === _gridActiveCat;
     return matchesQ && matchesCat;
   });
 
   const sortMode = sortSelect.value;
-  if (sortMode === "alpha") result.sort((a, b) => a.title.localeCompare(b.title, "fr"));
-  else if (sortMode === "category") result.sort((a, b) => a.category.localeCompare(b.category, "fr"));
-  else if (sortMode === "year") result.sort((a, b) => b.year - a.year);
+  if (sortMode === "alpha") result.sort((a, b) => (a.title || "").localeCompare(b.title || "", "fr"));
+  else if (sortMode === "category") result.sort((a, b) => (a.category || "").localeCompare(b.category || "", "fr"));
+  else if (sortMode === "year") result.sort((a, b) => (b.year || 0) - (a.year || 0));
   return result;
 }
 
@@ -1438,6 +1691,16 @@ function renderListView() {
   const list = getFilteredSortedBooks();
   const isGridMode = toggleGrid.classList.contains("active");
 
+  // Skeleton pendant le chargement du catalogue cloud
+  if (!list.length && _catalogLoading) {
+    if (countEl) countEl.textContent = "Chargement du catalogue…";
+    if (emptyState) emptyState.hidden = true;
+    const sk = skeletonCardsHTML(8);
+    if (isGridMode) { gridView.hidden = false; listView.hidden = true; gridView.innerHTML = sk; }
+    else { listView.hidden = false; gridView.hidden = true; listView.innerHTML = skeletonRowsHTML(6); }
+    return;
+  }
+
   // Category pills
   const pillsContainer = document.getElementById("booksCategoryPills");
   if (pillsContainer) {
@@ -1449,14 +1712,38 @@ function renderListView() {
   if (emptyState) emptyState.hidden = list.length !== 0;
   if (countEl) countEl.textContent = `${list.length} livre${list.length !== 1 ? 's' : ''} trouvé${list.length !== 1 ? 's' : ''}`;
 
+  // Réinitialiser la pagination quand filtres/tri changent
+  const sig = searchInput.value + "|" + sortSelect.value + "|" + _gridActiveCat;
+  if (sig !== _listSig) { _listSig = sig; _listLimit = LIST_PAGE_SIZE; }
+  const visible = list.slice(0, _listLimit);
+
   if (isGridMode) {
     gridView.hidden = false;
     listView.hidden = true;
-    gridView.innerHTML = list.map(b => renderBookGridCard(b)).join("");
+    gridView.innerHTML = visible.map(b => renderBookGridCard(b)).join("");
+    gridView.querySelectorAll(".book-grid-card").forEach((cd, i) => cd.style.setProperty("--i", Math.min(i, 12)));
   } else {
     gridView.hidden = true;
     listView.hidden = false;
-    listView.innerHTML = list.map(b => renderBookListRow(b)).join("");
+    listView.innerHTML = visible.map(b => renderBookListRow(b)).join("");
+  }
+
+  // Bouton "Charger plus"
+  let moreBtn = document.getElementById("loadMoreBooksBtn");
+  if (!moreBtn && emptyState && emptyState.parentNode) {
+    moreBtn = document.createElement("button");
+    moreBtn.id = "loadMoreBooksBtn";
+    moreBtn.className = "btn btn-outline load-more-btn";
+    moreBtn.addEventListener("click", () => {
+      _listLimit += LIST_PAGE_SIZE;
+      renderListView();
+    });
+    emptyState.parentNode.insertBefore(moreBtn, emptyState);
+  }
+  if (moreBtn) {
+    const remaining = list.length - _listLimit;
+    moreBtn.hidden = remaining <= 0;
+    moreBtn.textContent = `Charger plus (${Math.max(0, remaining)} restant${remaining > 1 ? "s" : ""})`;
   }
 }
 
@@ -1464,7 +1751,7 @@ function renderBookGridCard(b) {
   const spineBg = colorForCategory(b.category);
   const isAvail = b.copies > 0;
   const coverHTML = b.cover
-    ? `<img class="bgc-cover-img" src="${escapeAttr(b.cover)}" alt="${escapeAttr(b.title)}" loading="lazy"
+    ? `<img class="bgc-cover-img" src="${escapeAttr(b.cover)}" alt="${escapeAttr(b.title)}" loading="lazy" decoding="async" width="300" height="450"
          onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
        <div class="bgc-fallback" style="background:${spineBg}; display:none;">
          <div class="bgc-fallback-title">${escapeHTML(b.title)}</div>
@@ -1498,7 +1785,7 @@ function renderBookListRow(b) {
   const spineBg = colorForCategory(b.category);
   const isAvail = b.copies > 0;
   const thumbHTML = b.cover
-    ? `<div class="blr-thumb"><img src="${escapeAttr(b.cover)}" alt="" loading="lazy" onerror="this.style.display='none'" /></div>`
+    ? `<div class="blr-thumb"><img src="${escapeAttr(b.cover)}" alt="" loading="lazy" decoding="async" width="48" height="64" onerror="this.style.display='none'" /></div>`
     : `<div class="blr-thumb" style="background:${spineBg}; color:#fff; font-size:11px; font-weight:700;">${escapeHTML(b.title.slice(0,2).toUpperCase())}</div>`;
 
   return `
@@ -1569,9 +1856,10 @@ document.getElementById("viewToggleList").addEventListener("click", () => {
    --------------------------------------------------------------------- */
 let _detailBookId = null;
 
-function openBookDetail(bookId) {
+async function openBookDetail(bookId) {
   const book = books.find(b => b.id === bookId);
   if (!book) return;
+  await ensureBookHeavyContent(book);
   _detailBookId = bookId;
 
   const overlay = document.getElementById("bookDetailOverlay");
@@ -1585,7 +1873,7 @@ function openBookDetail(bookId) {
   // Cover
   const coverWrap = document.getElementById("bdpCoverWrap");
   if (book.cover) {
-    coverWrap.innerHTML = `<img class="bdp-cover" src="${escapeAttr(book.cover)}" alt="${escapeAttr(book.title)}"
+    coverWrap.innerHTML = `<img class="bdp-cover" src="${escapeAttr(book.cover)}" alt="${escapeAttr(book.title)}" decoding="async"
       onerror="this.style.display='none'; document.getElementById('bdpCoverWrap').innerHTML=getFallbackCoverHtml('${escapeAttr(spineBg)}', '${escapeAttr(book.title.slice(0,2).toUpperCase())}');" />`;
   } else {
     coverWrap.innerHTML = `<div class="bdp-cover-fallback" style="background:${spineBg};">
@@ -1600,12 +1888,11 @@ function openBookDetail(bookId) {
 
   // Badges
   const badges = document.getElementById("bdpBadges");
-  badges.innerHTML = `
-    ${book.category ? `<span class="bdp-badge cat">${escapeHTML(book.category)}</span>` : ''}
-    ${book.year ? `<span class="bdp-badge year">${book.year}</span>` : ''}
-    <span class="bdp-badge" style="background:${book.copies > 0 ? 'rgba(62,125,81,0.75)' : 'rgba(174,59,59,0.75)'}">
-      ${book.copies > 0 ? `✓ ${book.copies}/${book.maxCopies} dispo.` : 'Indisponible'}
-    </span>`;
+  badges.innerHTML = [
+    book.category ? `<span class="bdp-badge cat" style="--i:0">${escapeHTML(book.category)}</span>` : "",
+    book.year ? `<span class="bdp-badge year" style="--i:1">${book.year}</span>` : "",
+    `<span class="bdp-badge" style="--i:2;background:${book.copies > 0 ? 'rgba(62,125,81,0.75)' : 'rgba(174,59,59,0.75)'}">${book.copies > 0 ? `✓ ${book.copies}/${book.maxCopies} dispo.` : 'Indisponible'}</span>`
+  ].join("");
 
   // Méta-données
   document.getElementById("bdpMetaGrid").innerHTML = `
@@ -1624,7 +1911,7 @@ function openBookDetail(bookId) {
 
   // Bouton lire
   const readBtn = document.getElementById("bdpReadBtn");
-  const hasContent = !!(book.content || book.pdfData || (book.pages && book.pages.length));
+  const hasContent = !!(book.content || book.pdfData || book.pdfUrl || (book.pages && book.pages.length));
   readBtn.disabled = !hasContent;
   readBtn.title = hasContent ? '' : 'Aucun contenu disponible pour cet ouvrage';
   readBtn.onclick = () => { closeBookDetail(); openReader(bookId); };
@@ -1633,16 +1920,26 @@ function openBookDetail(bookId) {
   const borrowBtn = document.getElementById("bdpBorrowBtn");
   borrowBtn.disabled = book.copies <= 0;
   borrowBtn.textContent = book.copies > 0 ? '↷ Emprunter ce livre' : '✕ Indisponible';
-  borrowBtn.onclick = () => { borrowBook(bookId); closeBookDetail(); showToast(`« ${book.title} » emprunté.`, 'success'); };
+  borrowBtn.onclick = () => { borrowBook(bookId); closeBookDetail(); };
 
   overlay.hidden = false;
   panel.hidden = false;
   document.body.style.overflow = 'hidden';
+  requestAnimationFrame(() => {
+    overlay.classList.add('is-open');
+    panel.classList.add('is-open');
+  });
 }
 
 function closeBookDetail() {
-  document.getElementById("bookDetailOverlay").hidden = true;
-  document.getElementById("bookDetailPanel").hidden = true;
+  const overlay = document.getElementById("bookDetailOverlay");
+  const panel = document.getElementById("bookDetailPanel");
+  overlay.classList.remove('is-open');
+  panel.classList.remove('is-open');
+  setTimeout(() => {
+    overlay.hidden = true;
+    panel.hidden = true;
+  }, 280);
   document.body.style.overflow = '';
   _detailBookId = null;
 }
@@ -1668,7 +1965,7 @@ function bookCardHTML(book, actionLabel, actionName, btnClass) {
       <div class="info">
         <h3>${escapeHTML(book.title)}</h3>
         <div class="author">${escapeHTML(book.author)}</div>
-        <div class="meta">${book.year} · ${book.copies}/${book.maxCopies} exemplaire(s) dispo.</div>
+        <div class="meta">${book.year || '—'} · ${book.copies}/${book.maxCopies} exemplaire(s) dispo.</div>
         <span class="tag">${escapeHTML(book.category)}</span>
         <div class="card-actions">
           <button class="btn ${btnClass} btn-sm" data-action="${actionName}" data-id="${book.id}">${actionLabel}</button>
@@ -1682,6 +1979,7 @@ function renderBorrowView() {
   const grid = document.getElementById("borrowGrid");
   const available = books.filter(b => b.copies > 0);
   grid.innerHTML = available.map(b => bookCardHTML(b, "Emprunter", "borrow", "btn-success")).join("");
+  grid.querySelectorAll(".book-card").forEach((c, i) => c.style.setProperty("--i", i));
   document.getElementById("borrowEmptyState").hidden = available.length !== 0;
 }
 
@@ -1689,6 +1987,7 @@ function renderReturnView() {
   const grid = document.getElementById("returnGrid");
   const borrowed = books.filter(b => b.copies < b.maxCopies);
   grid.innerHTML = borrowed.map(b => bookCardHTML(b, "Retourner", "return", "btn-primary")).join("");
+  grid.querySelectorAll(".book-card").forEach((c, i) => c.style.setProperty("--i", i));
   document.getElementById("returnEmptyState").hidden = borrowed.length !== 0;
 }
 
@@ -1718,6 +2017,7 @@ function renderStatsView() {
     ${statCardHTML("Livres disponibles", s.availableTitles, "✓")}
     ${statCardHTML("Livres empruntés (exemplaires)", s.borrowedCopies, "↷")}
   `;
+  enhanceStatCards(cardsEl);
 
   const byCategory = {};
   books.forEach(b => { byCategory[b.category] = (byCategory[b.category] || 0) + 1; });
@@ -1749,7 +2049,7 @@ document.getElementById("exportPdfBtn").addEventListener("click", () => {
   doc.text("Bibliothèque — Liste des livres", 14, 16);
 
   const rows = books.map(b => [
-    b.id, b.title, b.author, b.category, String(b.year), `${b.copies}/${b.maxCopies}`,
+    b.id, b.title, b.author, b.category, String(b.year ?? ''), `${b.copies}/${b.maxCopies}`,
   ]);
 
   doc.autoTable({
@@ -1804,10 +2104,6 @@ function escapeAttr(str) {
 
 // Clic sur la mini-carte sidebar -> aller sur le profil
 document.getElementById('sidebarProfile').addEventListener('click', (e) => {
-  if (!e.target.closest('.sidebar-profile-edit-btn')) return;
-  switchView('profile');
-});
-document.getElementById('sidebarProfile').addEventListener('click', (e) => {
   if (e.target.closest('.sidebar-profile-edit-btn')) {
     switchView('profile');
   }
@@ -1858,6 +2154,419 @@ document.getElementById('profileFavoritesGrid').addEventListener('click', (e) =>
   if (card && !e.target.closest('button')) openReader(card.dataset.id);
 });
 
+
+/* ---------------------------------------------------------------------
+   19b) MOTION DESIGN — compteurs, indicateur nav, révélation au scroll
+   --------------------------------------------------------------------- */
+function animateStatValue(el, target) {
+  if (_carousel.reduced || target === 0) { el.textContent = target; return; }
+  const dur = 750;
+  const t0 = performance.now();
+  const tick = (t) => {
+    const p = Math.min(1, (t - t0) / dur);
+    const eased = 1 - Math.pow(1 - p, 3);
+    el.textContent = Math.round(target * eased);
+    if (p < 1) requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+}
+
+function enhanceStatCards(container) {
+  if (!container) return;
+  container.querySelectorAll(".stat-card").forEach((card, i) => {
+    card.style.setProperty("--i", i);
+    const v = card.querySelector(".stat-value");
+    if (v) {
+      const t = parseInt(v.textContent, 10);
+      if (!isNaN(t)) animateStatValue(v, t);
+    }
+  });
+}
+
+function updateNavIndicator() {
+  const nav = document.getElementById("mainNav");
+  const ind = nav ? nav.querySelector(".nav-indicator") : null;
+  const active = nav ? nav.querySelector(".nav-btn.active") : null;
+  if (!ind || !active) return;
+  if (window.innerWidth <= 900) { ind.style.opacity = "0"; return; }
+  ind.style.top = active.offsetTop + "px";
+  ind.style.height = active.offsetHeight + "px";
+  ind.style.opacity = "1";
+}
+
+let _revealIO = null;
+function initScrollReveal() {
+  if (_carousel.reduced || !("IntersectionObserver" in window)) return;
+  if (_revealIO) return;
+  _revealIO = new IntersectionObserver((entries) => {
+    entries.forEach((en) => {
+      if (en.isIntersecting) { en.target.classList.add("revealed"); _revealIO.unobserve(en.target); }
+    });
+  }, { threshold: 0.06 });
+  document.querySelectorAll(".panel").forEach((p) => {
+    p.classList.add("reveal");
+    _revealIO.observe(p);
+  });
+}
+
+/* ---------------------------------------------------------------------
+   19c) CARROUSSEL 3D — cylindre de couvertures (vue Tableau de bord)
+   --------------------------------------------------------------------- */
+const CAROUSEL = {
+  cardWidth: 220,          // 150 sur mobile (carouselMetrics)
+  aspectRatio: 1,
+  gap: 25,
+  tilt: -5,                // degrés
+  perspective: 2500,       // px
+  cornerRadius: 12,
+  speed: 14,               // °/s
+  direction: "left",
+  momentum: 0.6,
+  parallax: 0.3,
+  depthFade: 0.55,
+  innerShade: 0.6,
+  maxBooks: 12,
+  minBooks: 6
+};
+
+const _carousel = {
+  books: [], items: [], stage: null,
+  rot: 0, vel: 0, mode: "auto", snapTarget: null, pendingOpen: null,
+  dragging: false, moved: 0, lastX: 0, samples: [], clickItem: null, clickTarget: null,
+  lastInteract: 0,
+  hovered: false, visible: true, parX: 0, parY: 0, appliedRot: 0,
+  raf: null, lastT: 0, reduced: false, sig: "", mobile: null,
+  bound: false, io: null
+};
+_carousel.reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+window.matchMedia("(prefers-reduced-motion: reduce)").addEventListener("change", (e) => {
+  _carousel.reduced = e.matches;
+  if (e.matches) _carousel.mode = "idle";
+  else if (_carousel.mode === "idle") _carousel.mode = "auto";
+});
+
+function carouselMetrics() {
+  const mobile = window.innerWidth <= 640;
+  const cardWidth = mobile ? 150 : CAROUSEL.cardWidth;
+  const cardHeight = Math.round(cardWidth / CAROUSEL.aspectRatio);
+  const gap = mobile ? 18 : CAROUSEL.gap;
+  const n = _carousel.books.length;
+  const radius = n > 1 ? (cardWidth + gap) / (2 * Math.tan(Math.PI / n)) : 0;
+  return { cardWidth, cardHeight, gap, radius, mobile };
+}
+
+function carouselCardInnerHTML(b) {
+  const bg = colorForCategory(b.category);
+  const title = escapeHTML(b.title.length > 40 ? b.title.slice(0, 40) + "…" : b.title);
+  if (b.cover) {
+    return `<img class="cr-cover" src="${escapeAttr(b.cover)}" alt="" loading="lazy" decoding="async" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
+      <div class="cr-fallback" style="background:${bg};display:none;"><span class="cr-fallback-deco">§</span><b>${title}</b></div>`;
+  }
+  return `<div class="cr-fallback" style="background:${bg};"><span class="cr-fallback-deco">§</span><b>${title}</b></div>`;
+}
+
+function carouselMiniCardHTML(b) {
+  const bg = colorForCategory(b.category);
+  const cover = b.cover
+    ? `<img class="carousel-mini-img" src="${escapeAttr(b.cover)}" alt="" loading="lazy" decoding="async" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
+       <div class="carousel-mini-fallback" style="background:${bg};display:none;">${escapeHTML(b.title.slice(0, 2).toUpperCase())}</div>`
+    : `<div class="carousel-mini-fallback" style="background:${bg};">${escapeHTML(b.title.slice(0, 2).toUpperCase())}</div>`;
+  return `<button type="button" class="carousel-mini-card" data-id="${b.id}" aria-label="Voir le détail de ${escapeAttr(b.title)}">${cover}<span class="carousel-mini-title">${escapeHTML(b.title)}</span></button>`;
+}
+
+function renderCarousel(force) {
+  const section = document.getElementById("carouselSection");
+  const stage = document.getElementById("carouselStage");
+  const grid = document.getElementById("carouselGrid");
+  if (!section || !stage) return;
+  const c = _carousel;
+  const recent = books.slice(-CAROUSEL.maxBooks).reverse();
+  const sig = recent.map(b => b.id).join("|");
+  if (!force && sig === c.sig) return;
+  c.sig = sig;
+  c.books = recent;
+  c.rot = 0; c.vel = 0; c.snapTarget = null; c.pendingOpen = null;
+  c.mode = c.reduced ? "idle" : "auto";
+
+  if (recent.length < CAROUSEL.minBooks) {
+    stage.innerHTML = "";
+    c.items = [];
+    stage.hidden = true;
+    if (grid) {
+      grid.hidden = false;
+      grid.innerHTML = recent.map(carouselMiniCardHTML).join("");
+    }
+    section.hidden = recent.length === 0;
+    return;
+  }
+
+  stage.hidden = false;
+  if (grid) { grid.hidden = true; grid.innerHTML = ""; }
+  section.hidden = false;
+  buildCarouselItems();
+}
+
+function buildCarouselItems() {
+  const c = _carousel;
+  const stage = c.stage = document.getElementById("carouselStage");
+  const viewport = stage.parentElement;
+  if (viewport) viewport.style.perspective = CAROUSEL.perspective + "px";
+  const m = carouselMetrics();
+  c.mobile = m.mobile;
+  const n = c.books.length;
+  const step = 360 / n;
+
+  stage.style.setProperty("--cw", m.cardWidth + "px");
+  stage.style.setProperty("--ch", m.cardHeight + "px");
+  stage.innerHTML = "";
+  c.items = c.books.map((b, i) => {
+    const item = document.createElement("div");
+    item.className = "cr-item";
+    item.dataset.index = i;
+    item.setAttribute("role", "button");
+    item.setAttribute("aria-label", `Livre : ${b.title} par ${b.author}`);
+    item.tabIndex = -1;
+    item.style.transform = `rotateY(${i * step}deg) translateZ(${m.radius}px)`;
+    item.innerHTML =
+      `<div class="cr-rise" style="--i:${i}"><div class="cr-card" style="border-radius:${CAROUSEL.cornerRadius}px">        ${carouselCardInnerHTML(b)}        <div class="cr-shade"></div>        <div class="cr-caption"><strong>${escapeHTML(b.title)}</strong><span>${escapeHTML(b.author)}</span>
+          <div class="cr-actions">
+            <button type="button" class="cr-action-btn cr-read" data-act="read">📖 Lire</button>
+            <button type="button" class="cr-action-btn cr-detail" data-act="detail">Détails</button>
+          </div>
+        </div>      </div></div>`;
+    stage.appendChild(item);
+    return { el: item, card: item.querySelector(".cr-card"), shade: item.querySelector(".cr-shade"), angle: i * step };
+  });
+
+  bindCarouselEvents(stage);
+  observeCarouselViewport(viewport);
+  if (!c.raf) carouselLoop();
+}
+
+function observeCarouselViewport(viewport) {
+  const c = _carousel;
+  if (c.io || !("IntersectionObserver" in window) || !viewport) return;
+  c.io = new IntersectionObserver((entries) => {
+    c.visible = entries[0].isIntersecting;
+  }, { threshold: 0.05 });
+  c.io.observe(viewport);
+}
+
+function nearestStepRotation(rot) {
+  const n = _carousel.items.length;
+  if (!n) return rot;
+  const step = 360 / n;
+  return Math.round(rot / step) * step;
+}
+
+function rotationForIndex(i) {
+  const n = _carousel.books.length;
+  if (!n) return 0;
+  const a = (360 / n) * i;
+  return a + 360 * Math.round((_carousel.rot - a) / 360);
+}
+
+function frontIndex() {
+  const c = _carousel, n = c.items.length;
+  if (!n) return 0;
+  const step = 360 / n;
+  let best = 0, bd = Infinity;
+  for (let i = 0; i < n; i++) {
+    const d = Math.abs((((i * step - c.rot) % 360) + 540) % 360 - 180);
+    if (d < bd) { bd = d; best = i; }
+  }
+  return best;
+}
+
+function applyCarouselTransform() {
+  const c = _carousel;
+  if (!c.stage) return;
+  const tilt = CAROUSEL.tilt + c.parY * CAROUSEL.parallax * 12;
+  c.appliedRot = c.rot + c.parX * CAROUSEL.parallax * 4;
+  c.stage.style.transform = `rotateX(${tilt}deg) rotateY(${c.appliedRot}deg)`;
+  shadeCarouselItems();
+}
+
+function shadeCarouselItems() {
+  const c = _carousel, n = c.items.length;
+  if (!n) return;
+  const step = 360 / n;
+  const rot = c.appliedRot || c.rot;
+  for (const it of c.items) {
+    const rel = (((it.angle - rot) % 360) + 540) % 360 - 180;
+    const facing = Math.cos(rel * Math.PI / 180);
+    const dim = (1 - facing) / 2;
+    it.card.style.opacity = (1 - dim * CAROUSEL.depthFade).toFixed(3);
+    it.card.style.filter = `brightness(${(1 - dim * 0.5).toFixed(3)}) saturate(${(1 - dim * 0.35).toFixed(2)})`;
+    it.shade.style.opacity = (dim * CAROUSEL.innerShade).toFixed(3);
+    it.card.classList.toggle("is-front", Math.abs(rel) <= step / 2);
+  }
+}
+
+function carouselLoop() {
+  const c = _carousel;
+  if (c.raf) return;
+  c.lastT = performance.now();
+  const tick = (now) => {
+    c.raf = requestAnimationFrame(tick);
+    if (!c.items.length || !c.stage) return;
+    const dt = Math.min(0.06, (now - c.lastT) / 1000);
+    c.lastT = now;
+    if (document.hidden || !c.visible) { applyCarouselTransform(); return; }
+
+    if (!c.reduced && !c.dragging && !c.hovered && c.mode === "auto" && (now - c.lastInteract) > 4000) {
+      c.rot += (CAROUSEL.direction === "left" ? -1 : 1) * CAROUSEL.speed * dt;
+    } else if (c.mode === "inertia") {
+      c.rot += c.vel * dt;
+      c.vel *= Math.exp(-2.6 * dt);
+      if (Math.abs(c.vel) < 4) {
+        c.mode = "snap";
+        c.snapTarget = nearestStepRotation(c.rot);
+      }
+    } else if (c.mode === "snap" && c.snapTarget !== null) {
+      const d = c.snapTarget - c.rot;
+      c.rot += d * Math.min(1, dt * (c.reduced ? 18 : 9));
+      if (Math.abs(d) < 0.05) {
+        c.rot = c.snapTarget;
+        c.snapTarget = null;
+        if (c.pendingOpen) {
+          const id = c.pendingOpen;
+          c.pendingOpen = null;
+          setTimeout(() => openBookDetail(id), 120);
+        }
+        c.mode = c.reduced ? "idle" : "auto";
+      }
+    }
+    applyCarouselTransform();
+  };
+  c.raf = requestAnimationFrame(tick);
+}
+
+function carouselStep(delta) {
+  const c = _carousel, n = c.items.length;
+  if (!n) return;
+  const f = frontIndex();
+  const ni = (f + delta + n) % n;
+  c.snapTarget = rotationForIndex(ni);
+  c.mode = "snap";
+  c.lastInteract = performance.now();
+}
+
+function handleCarouselTap(item, target) {
+  const c = _carousel;
+  if (!item || !c.books.length) return;
+  const idx = parseInt(item.dataset.index, 10);
+  if (isNaN(idx) || !c.books[idx]) return;
+  c.lastInteract = performance.now();
+  const btn = target && target.closest ? target.closest(".cr-action-btn") : null;
+  if (btn) {
+    if (btn.dataset.act === "read") openReader(c.books[idx].id);
+    else openBookDetail(c.books[idx].id);
+    return;
+  }
+  // Carte de face : lecture directe ; carte sur le côté : focus + pause
+  if (idx === frontIndex()) { openReader(c.books[idx].id); return; }
+  c.pendingOpen = null;
+  c.snapTarget = rotationForIndex(idx);
+  c.mode = "snap";
+}
+
+function bindCarouselEvents(stage) {
+  const c = _carousel;
+  if (c.bound) return;
+  c.bound = true;
+
+  stage.addEventListener("pointerover", (e) => {
+    const it = e.target && e.target.closest ? e.target.closest(".cr-item") : null;
+    if (!it) return;
+    const b = _carousel.books[parseInt(it.dataset.index, 10)];
+    if (b) prefetchBookPdf(b); // précharge après 200 ms de survol
+  });
+
+  stage.addEventListener("pointerdown", (e) => {
+    if (e.button !== undefined && e.button !== 0) return;
+    c.dragging = true;
+    c.moved = 0;
+    c.clickItem = e.target && e.target.closest ? e.target.closest(".cr-item") : null;
+    c.clickTarget = e.target;
+    c.lastInteract = performance.now();
+    if (c.clickItem) {
+      const bi = parseInt(c.clickItem.dataset.index, 10);
+      if (bi >= 0 && _carousel.books[bi]) prefetchBookPdf(_carousel.books[bi]); // première sélection : précharge immédiate
+    }
+    c.lastX = e.clientX;
+    c.samples = [{ x: e.clientX, t: performance.now() }];
+    c.vel = 0;
+    c.mode = "drag";
+    try { stage.setPointerCapture(e.pointerId); } catch (err) {}
+    stage.classList.add("dragging");
+  });
+
+  stage.addEventListener("pointermove", (e) => {
+    if (!c.dragging) {
+      const r = stage.getBoundingClientRect();
+      if (r.width && r.height) {
+        c.parX = ((e.clientX - r.left) / r.width - 0.5) * 2;
+        c.parY = ((e.clientY - r.top) / r.height - 0.5) * 2;
+      }
+      return;
+    }
+    const now = performance.now();
+    const dx = e.clientX - c.lastX;
+    c.lastX = e.clientX;
+    c.rot += dx * 0.32;
+    c.moved += Math.abs(dx);
+    c.samples.push({ x: e.clientX, t: now });
+    if (c.samples.length > 6) c.samples.shift();
+    const s0 = c.samples[0], s1 = c.samples[c.samples.length - 1];
+    if (s1.t > s0.t) c.vel = ((s1.x - s0.x) / (s1.t - s0.t)) * 0.32 * 1000;
+  });
+
+  const endDrag = (e) => {
+    if (!c.dragging) return;
+    c.dragging = false;
+    stage.classList.remove("dragging");
+    if (c.moved < 6) {
+      if (c.clickItem) handleCarouselTap(c.clickItem, c.clickTarget);
+      c.clickItem = null;
+      c.clickTarget = null;
+      c.vel = 0;
+      c.mode = c.reduced ? "idle" : "auto";
+      return;
+    }
+    c.vel = Math.max(-900, Math.min(900, c.vel * CAROUSEL.momentum));
+    c.mode = "inertia";
+  };
+  stage.addEventListener("pointerup", endDrag);
+  stage.addEventListener("pointercancel", endDrag);
+
+  stage.addEventListener("pointerenter", () => { c.hovered = true; });
+  stage.addEventListener("pointerleave", () => { c.hovered = false; c.parX = 0; c.parY = 0; });
+
+  stage.addEventListener("keydown", (e) => {
+    if (!c.items.length) return;
+    if (e.key === "ArrowLeft") { e.preventDefault(); carouselStep(-1); }
+    else if (e.key === "ArrowRight") { e.preventDefault(); carouselStep(1); }
+    else if (e.key === "Enter") {
+      e.preventDefault();
+      const f = frontIndex();
+      if (c.books[f]) openReader(c.books[f].id);
+    } else if (e.key === "Escape") {
+      // Reprendre la rotation immédiatement
+      c.lastInteract = 0;
+      if (c.mode === "snap") { c.mode = "auto"; c.snapTarget = null; c.pendingOpen = null; }
+    }
+  });
+}
+
+// Grille classique (fallback < 6 livres)
+const carouselGridEl = document.getElementById("carouselGrid");
+if (carouselGridEl) {
+  carouselGridEl.addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-id]");
+    if (btn) openBookDetail(btn.dataset.id);
+  });
+}
 /* ---------------------------------------------------------------------
    20) RENDU GLOBAL
    --------------------------------------------------------------------- */
@@ -1874,3 +2583,27 @@ function renderAll() {
 
 // Premier rendu au chargement
 renderAll();
+
+
+// Préconnexion vers Supabase (origin dynamique)
+try {
+  const origin = new URL(window.SUPABASE_URL).origin;
+  const pre = document.createElement("link");
+  pre.rel = "preconnect";
+  pre.href = origin;
+  pre.crossOrigin = "anonymous";
+  document.head.appendChild(pre);
+} catch (e) {}
+
+// Initialisations motion design
+updateNavIndicator();
+initScrollReveal();
+carouselLoop();
+window.addEventListener("resize", debounce(() => {
+  updateNavIndicator();
+  const mob = window.innerWidth <= 640;
+  if (mob !== _carousel.mobile) renderCarousel(true);
+}, 300));
+
+// Catalogue cloud : démarre après le premier rendu (cache + refresh arrière-plan)
+if (isSupabaseConfigured()) initCloudCatalog();

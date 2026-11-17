@@ -1,90 +1,79 @@
-# Bibliothèque — Application de gestion de livres
+# Bibliothèque — Application de gestion et lecture de livres
 
-Application web simple (HTML / CSS / JavaScript) permettant à un·e bibliothécaire
-d'ajouter, consulter, rechercher, modifier, supprimer, emprunter et retourner des
-livres. Aucune installation n'est nécessaire : tout fonctionne dans le navigateur,
-et les données sont conservées grâce au **LocalStorage**.
+Application web (HTML / CSS / JavaScript) avec deux espaces :
 
-## 1. Structure du projet
+- **`index.html`** — site public : catalogue, liseuse (texte, PDF, images),
+  progression de lecture, favoris, emprunts, profil.
+- **`admin.html`** — portail administrateur : gestion des livres, import
+  PDF/images/CSV/Excel/ISBN, synchronisation Supabase.
+
+Les livres peuvent être **hébergés en ligne** via **Supabase** : les PDF et
+images sont stockés dans Supabase Storage (bucket `media`), les métadonnées
+dans la table `books`. Le site public lit le catalogue depuis le cloud —
+tout visiteur peut lire les livres **sans compte**.
+
+## Structure du projet
 
 ```
 bibliotheque/
-├── index.html   → structure de la page (sidebar, formulaires, tableaux, modales)
-├── style.css    → mise en forme (palette, typographie, cartes, responsive)
-├── script.js    → toute la logique (CRUD, emprunt/retour, recherche, tri, stats, exports)
-└── README.md    → ce document
+├── index.html           → site public (catalogue + liseuse)
+├── script.js            → logique publique (catalogue cloud, lecteur, stats)
+├── style.css            → styles publics
+├── admin.html           → portail administrateur
+├── admin.js             → logique admin (CRUD, imports, Supabase, auth)
+├── admin.css            → styles admin
+├── supabase-config.js   → URL + clé anon Supabase (à remplir)
+├── supabase_schema.sql  → schéma complet (tables, RLS, bucket Storage)
+├── supabase/
+│   └── migrations/      → migrations CLI Supabase (déjà poussées)
+└── README.md            → ce document
 ```
 
-## 2. Installation
+## Installation
 
-Aucune installation, aucun serveur, aucune dépendance à compiler.
+Aucune installation nécessaire : double-cliquez sur `index.html`.
 
-1. Téléchargez (ou copiez) le dossier `bibliotheque/` sur votre ordinateur.
-2. Double-cliquez sur `index.html` (ou ouvrez-le avec clic droit → Ouvrir avec →
-   votre navigateur : Chrome, Firefox, Edge...).
-3. L'application s'ouvre directement, aucune connexion internet n'est requise
-   pour les fonctionnalités principales (l'internet est utilisé uniquement pour
-   charger les polices et les bibliothèques d'export PDF/Excel).
+### Connexion Supabase (optionnel mais recommandé)
 
-## 3. Premier lancement — jeu de données de test
+1. `supabase-config.js` : renseignez `SUPABASE_URL` et `SUPABASE_ANON_KEY`
+   (Dashboard → Project Settings → API). Une copie peut être lue depuis `.env`.
+2. Le schéma est déjà appliqué via `supabase db push` (CLI). Pour une nouvelle
+   base : collez `supabase_schema.sql` dans le SQL Editor, ou utilisez la CLI
+   (`supabase link` puis `supabase db push --remote`).
 
-Au tout premier chargement, si le LocalStorage est vide, l'application charge
-**automatiquement 20 livres de test** (romans, informatique, science-fiction,
-histoire, sciences, jeunesse...) pour ne pas démarrer sur une page vide.
+## Espace public (`index.html`)
 
-Vous pouvez recharger ce jeu de données à tout moment via le bouton
-**« Charger 20 livres de test »** présent sur le Tableau de bord (une confirmation
-vous sera demandée si des livres existent déjà, car cela les remplace).
+- Catalogue avec recherche, filtres par catégorie, tri
+- Fiche livre : description, exemplaires, bouton **Lire** / **Emprunter**
+- Liseuse : texte (chapitres, sommaire, marque-pages, recherche, thèmes),
+  **PDF** (rendu pdf.js page par page, zoom), **images** (pages scannées)
+- Progression de lecture, favoris, profil personnel, exports PDF/Excel
 
-## 4. Utilisation
+## Espace admin (`admin.html`)
 
-La barre latérale gauche donne accès à 5 sections, comme demandé dans le cahier
-des charges :
+Authentification par **email + mot de passe Supabase Auth** (compte à créer
+dans *Authentication → Users*). Sans Supabase configuré, un mot de passe
+local sert de fallback.
 
-| Section              | Ce qu'on peut y faire |
-|-----------------------|------------------------|
-| **Tableau de bord**   | Vue d'ensemble : statistiques rapides + derniers livres ajoutés |
-| **Ajouter**           | Formulaire d'ajout d'un nouveau livre (titre, auteur, catégorie, année, exemplaires, couverture facultative) |
-| **Liste des livres**  | Tableau complet avec recherche (titre / auteur / catégorie), tri (alphabétique ou par catégorie), boutons Modifier / Emprunter / Supprimer, et exports PDF / Excel |
-| **Emprunter**         | Cartes des livres disponibles ; un clic diminue le nombre d'exemplaires de 1 |
-| **Retourner**         | Cartes des livres actuellement empruntés ; un clic augmente le nombre d'exemplaires de 1 |
-| **Statistiques**      | Nombre total de livres, d'exemplaires, de livres disponibles/empruntés, et répartition par catégorie |
+- **Ajouter un livre** : formulaire manuel, recherche ISBN (Open Library),
+  contenu texte, **PDF** (upload → Supabase Storage), **images**
+- **Imports** : CSV, Excel (.xlsx/.xls via SheetJS), JSON
+- **Tous les livres** : recherche, édition, suppression unitaire ou totale
+  (avec confirmation « Cette action est irréversible »)
+- **Base de données** : statut connexion, « Pousser vers Supabase »
+  (synchronise tout le catalogue local vers le cloud), liste des utilisateurs
 
-### Règles importantes
+## Sécurité
 
-- **Tous les champs du formulaire sont obligatoires** — un message d'erreur
-  s'affiche sous le champ concerné si besoin.
-- **Aucun nombre négatif** n'est accepté pour l'année ou le nombre d'exemplaires.
-- **L'identifiant (ID)** est toujours généré automatiquement (format `LIV-0001`,
-  `LIV-0002`, ...) — il n'est jamais saisi à la main.
-- **Un livre à 0 exemplaire est indisponible** : le bouton Emprunter refuse
-  l'opération et affiche le message *« Livre indisponible »*.
-- **La suppression demande toujours une confirmation** avant d'être définitive.
+- Lecture publique : `SELECT` ouvert sur `books` et fichiers `media`
+- Écriture : réservée aux utilisateurs **authentifiés** (RLS)
+- Le compte admin est le seul utilisateur possible (signups désactivés)
+- Les PDF/images ne transitent plus par le LocalStorage (~5 Mo) mais par
+  Supabase Storage — plus de limite pratique de taille
 
-## 5. Où sont stockées les données ?
+## Technologies
 
-Toutes les données sont stockées **dans le navigateur** via `localStorage`,
-sous la clé `biblio_books`. Cela signifie :
-
-- Les données restent disponibles même après avoir fermé l'onglet ou redémarré
-  l'ordinateur (tant que vous rouvrez le fichier depuis le même navigateur).
-- Les données ne sont **pas partagées** entre plusieurs navigateurs ou
-  ordinateurs différents.
-- Vider le cache/les données de navigation du navigateur effacera la
-  bibliothèque (vous pourrez toujours recharger le jeu de test via le bouton dédié).
-
-## 6. Fonctionnalités bonus incluses
-
-- 🖼️ Image de couverture par livre (URL facultative)
-- 🔤 Tri alphabétique par titre
-- 🗂️ Tri par catégorie
-- 📄 Export PDF du catalogue
-- 📊 Export Excel (.xlsx) du catalogue
-
-## 7. Technologies utilisées
-
-- HTML5 / CSS3 / JavaScript (vanilla, aucun framework)
-- LocalStorage pour la persistance des données
-- [jsPDF](https://github.com/parallax/jsPDF) + [jsPDF-AutoTable](https://github.com/simonbengtsson/jsPDF-AutoTable) pour l'export PDF
-- [SheetJS (xlsx)](https://sheetjs.com/) pour l'export Excel
-- Polices Google Fonts : Fraunces, Inter, JetBrains Mono
+- HTML5 / CSS3 / JavaScript vanilla
+- Supabase (Postgres + Auth + Storage) via `@supabase/supabase-js`
+- pdf.js (rendu PDF), jsPDF + AutoTable (exports PDF), SheetJS (Excel)
+- LocalStorage : progression, favoris, profil (cache local du visiteur)
