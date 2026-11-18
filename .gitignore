@@ -1,0 +1,12 @@
+# Secrets & configuration locale
+.env
+.env.*
+!.env.example
+
+# IDE
+.idea/
+.vscode/
+
+# Dépendances & builds
+node_modules/
+dist/

@@ -27,6 +27,7 @@ let editingBookId = null;
 let activeEditorBookId = null;
 let pendingDeleteId = null;
 let pendingDeleteAll = false;
+let _highlightBookId = null;
 
 /* -------------------------------------------------------------------------
    3) CHARGEMENT & PERSISTANCE LIVRES
@@ -203,12 +204,28 @@ function switchAdminView(viewName) {
   if (ADMIN_TITLES[viewName]) {
     document.getElementById("adminViewTitle").textContent = ADMIN_TITLES[viewName].title;
     document.getElementById("adminViewSubtitle").textContent = ADMIN_TITLES[viewName].subtitle;
+    const tt = document.querySelector("#adminApp .topbar-title");
+    if (tt) { tt.classList.remove("tt-anim"); void tt.offsetWidth; tt.classList.add("tt-anim"); }
   }
+
+  updateAdminNavIndicator();
 
   if (viewName === "manage-books") renderManageBooksTable();
   if (viewName === "content-editor") renderContentBooksList();
   if (viewName === "dashboard") renderDashboardView();
   if (viewName === "users") loadCloudUsers();
+}
+
+// Pastille dorée glissante sous l'onglet admin actif (même style que la partie publique)
+function updateAdminNavIndicator() {
+  const nav = document.getElementById("adminNav");
+  const ind = nav ? nav.querySelector(".nav-indicator") : null;
+  const active = nav ? nav.querySelector(".nav-btn.active") : null;
+  if (!ind || !active) return;
+  if (window.innerWidth <= 900) { ind.style.opacity = "0"; return; }
+  ind.style.top = active.offsetTop + "px";
+  ind.style.height = active.offsetHeight + "px";
+  ind.style.opacity = "1";
 }
 
 function initNav() {
@@ -217,6 +234,8 @@ function initNav() {
     if (!btn) return;
     switchAdminView(btn.dataset.view);
   });
+  window.addEventListener("resize", updateAdminNavIndicator);
+  requestAnimationFrame(updateAdminNavIndicator);
 
   document.addEventListener("click", (e) => {
     const navEl = e.target.closest("[data-nav]");
@@ -264,6 +283,7 @@ function renderDashboardView() {
         <div class="stat-value">${withoutContent}</div>
       </div>
     `;
+    enhanceAdminStatCards(cardsContainer);
   }
 
   // Derniers ajouts
@@ -271,7 +291,7 @@ function renderDashboardView() {
   if (tbody) {
     const recents = books.slice(-6).reverse();
     tbody.innerHTML = recents.length
-      ? recents.map(b => {
+      ? recents.map((b, ri) => {
           const ct = b.contentType || "text";
           const hasC = ct === "pdf" ? !!(b.pdfData || b.pdfUrl) : ct === "images" ? !!(b.pages && b.pages.length) : !!(b.content && b.content.trim());
           const contentLabel = ct === "pdf" ? "✓ PDF" : ct === "images" ? "✓ Images" : "✓ Texte OK";
@@ -279,7 +299,7 @@ function renderDashboardView() {
             ? `<img src="${escapeAttr(b.cover)}" alt="" style="width:34px;height:46px;object-fit:cover;border-radius:3px;" />`
             : `<div style="width:34px;height:46px;background:${colorForCategory(b.category)};border-radius:3px;display:grid;place-items:center;color:#fff;font-size:11px;font-weight:700;">${escapeHTML((b.title || "").slice(0,2))}</div>`;
           return `
-            <tr>
+            <tr style="--i:${ri}">
               <td>${thumb}</td>
               <td><span class="id-chip">${b.id}</span></td>
               <td><b>${escapeHTML(b.title)}</b></td>
@@ -396,7 +416,7 @@ async function uploadToStorage(file, path) {
   if (!supabaseClient) throw new Error("Supabase non configuré — vérifiez supabase-config.js");
   const { data } = await supabaseClient.auth.getSession();
   if (!data.session) throw new Error("Session admin requise — reconnectez-vous à admin.html");
-  const { error } = await supabaseClient.storage.from("media").upload(path, file, { upsert: true, contentType: file.type || "application/octet-stream", cacheControl: "3600" });
+  const { error } = await supabaseClient.storage.from("media").upload(path, file, { upsert: true, contentType: file.type || "application/octet-stream", cacheControl: "31536000" });
   if (error) throw error;
   const { data: pub } = supabaseClient.storage.from("media").getPublicUrl(path);
   return pub.publicUrl;
@@ -487,6 +507,7 @@ async function getPdfCoverDataUrl(pdfDoc) {
 async function importSinglePdf(file, index, total) {
   const label = `[${index + 1}/${total}] ${file.name}`;
   setBatchProgress((index / total) * 100, `${label} — analyse…`);
+  batchCardUpdate(index, 8, "analyse du PDF…", "active");
 
   if (file.size > 30 * 1024 * 1024) {
     showToast(`⚠️ « ${file.name} » dépasse 30 Mo (${formatFileSize(file.size)}) — pensez à le compresser pour une lecture plus rapide.`, "info");
@@ -502,6 +523,7 @@ async function importSinglePdf(file, index, total) {
   const author = (meta.Author || "").trim() || "Auteur inconnu";
 
   setBatchProgress(((index + 0.3) / total) * 100, `${label} — couverture…`);
+  batchCardUpdate(index, 35, "génération de la couverture…", "active");
   let coverUrl = "";
   const coverDataUrl = await getPdfCoverDataUrl(pdf);
   if (coverDataUrl && supabaseClient) {
@@ -513,9 +535,11 @@ async function importSinglePdf(file, index, total) {
   }
 
   setBatchProgress(((index + 0.6) / total) * 100, `${label} — envoi du PDF…`);
+  batchCardUpdate(index, 65, "envoi vers Supabase Storage…", "active");
   const pdfUrl = await uploadToStorage(file, `pdfs/${Date.now()}-${file.name.replace(/[^\w.\-]/g, "_")}`);
 
   setBatchProgress(((index + 0.85) / total) * 100, `${label} — enregistrement…`);
+  batchCardUpdate(index, 88, "enregistrement en base…", "active");
   const newBook = {
     id: generateId(),
     isbn: "",
@@ -536,8 +560,44 @@ async function importSinglePdf(file, index, total) {
   books = loadBooks();
   books.push(newBook);
   saveBooks(books);
+  _highlightBookId = newBook.id;
   await syncBookToSupabase(newBook);
   return newBook;
+}
+
+// Cartes de progression individuelles pour l'import PDF groupé
+function batchCardsInit(files) {
+  const wrap = document.getElementById("pdfBatchCards");
+  if (!wrap) return;
+  wrap.innerHTML = "";
+  files.forEach((f, i) => {
+    const card = document.createElement("div");
+    card.className = "pdf-batch-card";
+    card.style.setProperty("--i", i);
+    card.innerHTML = `
+      <div class="pdf-batch-card-head">
+        <span class="pdf-batch-card-name" title="${escapeAttr(f.name)}">${escapeHTML(f.name)}</span>
+        <span class="pdf-batch-card-state">…</span>
+      </div>
+      <div class="pdf-batch-card-bar"><div class="pdf-batch-card-fill"></div></div>
+      <div class="pdf-batch-card-step muted"></div>`;
+    wrap.appendChild(card);
+  });
+}
+function batchCardUpdate(index, pct, stepText, state) {
+  const wrap = document.getElementById("pdfBatchCards");
+  const card = wrap && wrap.children[index];
+  if (!card) return;
+  const fill = card.querySelector(".pdf-batch-card-fill");
+  if (fill && pct != null) fill.style.width = Math.max(0, Math.min(100, pct)) + "%";
+  const step = card.querySelector(".pdf-batch-card-step");
+  if (stepText != null && step) step.textContent = stepText;
+  if (state) {
+    card.classList.remove("is-active", "is-done", "is-error");
+    card.classList.add("is-" + state);
+    const st = card.querySelector(".pdf-batch-card-state");
+    if (st) st.textContent = state === "done" ? "✓" : state === "error" ? "✗" : "…";
+  }
 }
 
 async function importPdfFiles(fileList) {
@@ -550,12 +610,16 @@ async function importPdfFiles(fileList) {
   }
 
   let ok = 0, ko = 0;
+  batchCardsInit(files);
   for (let i = 0; i < files.length; i++) {
     try {
+      batchCardUpdate(i, 2, "en file…", "active");
       await importSinglePdf(files[i], i, files.length);
+      batchCardUpdate(i, 100, "Importé et synchronisé ✓", "done");
       ok++;
     } catch (e) {
       ko++;
+      batchCardUpdate(i, 100, "Échec : " + e.message, "error");
       console.error("[Import PDF]", e);
       showToast(`Échec « ${files[i].name} » : ${e.message}`, "error");
     }
@@ -926,6 +990,7 @@ function _proceedSaveBook(idToUpdate, bookData) {
     };
     books.push(newBook);
     saveBooks(books);
+    _highlightBookId = newBook.id;
     syncBookToSupabase(newBook);
     showToast(`« ${newBook.title} » ajouté à la bibliothèque !`, "success");
   }
@@ -1175,8 +1240,9 @@ function resetBookForm() {
    8) GESTION DE TOUS LES LIVRES
    ------------------------------------------------------------------------- */
 function initManageBooks() {
+  const debouncedManageSearch = debounce((q) => renderManageBooksTable(q), 250);
   document.getElementById("manageSearchInput")?.addEventListener("input", (e) => {
-    renderManageBooksTable(e.target.value.trim().toLowerCase());
+    debouncedManageSearch(e.target.value.trim().toLowerCase());
   });
 
   document.getElementById("managePushSupaBtn")?.addEventListener("click", pushAllBooksToSupabase);
@@ -1200,16 +1266,17 @@ function renderManageBooksTable(query = "") {
     return;
   }
 
-  tbody.innerHTML = filtered.map(b => {
+  tbody.innerHTML = filtered.map((b, ri) => {
     const ct = b.contentType || "text";
     const hasC = ct === "pdf" ? !!(b.pdfData || b.pdfUrl) : ct === "images" ? !!(b.pages && b.pages.length) : !!(b.content && b.content.trim());
     const contentBadge = ct === "pdf" ? "✓ PDF" : ct === "images" ? `✓ ${b.pages.length} img` : (hasC ? `✓ ${b.content.split(/^---/m).filter(s => s.trim()).length} ch.` : "⚠ Aucun texte");
+    const isNew = b.id === _highlightBookId;
     const thumb = b.cover
       ? `<img src="${escapeAttr(b.cover)}" alt="" style="width:36px;height:50px;object-fit:cover;border-radius:4px;" />`
       : `<div style="width:36px;height:50px;background:${colorForCategory(b.category)};border-radius:4px;display:grid;place-items:center;color:#fff;font-size:12px;font-weight:700;">${escapeHTML((b.title || "").slice(0,2))}</div>`;
 
     return `
-      <tr>
+      <tr data-book-id="${escapeAttr(b.id)}" class="${isNew ? 'row-highlight' : ''}" style="--i:${ri}">
         <td>${thumb}</td>
         <td><span class="id-chip">${b.id}</span></td>
         <td><b>${escapeHTML(b.title)}</b></td>
@@ -1226,12 +1293,13 @@ function renderManageBooksTable(query = "") {
           <div class="row-actions">
             <button class="btn btn-outline btn-sm" onclick="editBookInForm('${jsStr(b.id)}')">✏️ Modifier</button>
             <button class="btn btn-primary btn-sm" onclick="openContentEditor('${jsStr(b.id)}')">📝 Texte</button>
-            <button class="btn btn-danger btn-sm" onclick="askDeleteBook('${jsStr(b.id)}')">🗑️</button>
+            <button class="btn btn-danger btn-sm" onclick="askDeleteBook('${jsStr(b.id)}')" aria-label="Supprimer ${escapeAttr(b.title)}">🗑️</button>
           </div>
         </td>
       </tr>
     `;
   }).join("");
+  _highlightBookId = null;
 }
 
 function askDeleteBook(bookId) {
@@ -1319,16 +1387,26 @@ document.getElementById("adminConfirmOk")?.addEventListener("click", async () =>
     return;
   }
   if (pendingDeleteId) {
-    const deletedBook = books.find(b => b.id === pendingDeleteId);
-    books = loadBooks().filter(b => b.id !== pendingDeleteId);
-    saveBooks(books);
-    cleanLocalBookArtifacts([pendingDeleteId]);
-    if (supabaseClient) {
-      supabaseClient.from("books").delete().eq("biblio_id", pendingDeleteId).then(() => {});
-      removeBookFilesFromStorage(deletedBook);
+    const delId = pendingDeleteId;
+    const deletedBook = books.find(b => b.id === delId);
+    const row = document.querySelector('#manageBooksTableBody tr[data-book-id="' + (window.CSS && CSS.escape ? CSS.escape(delId) : delId) + '"]');
+    const doDelete = () => {
+      books = loadBooks().filter(b => b.id !== delId);
+      saveBooks(books);
+      cleanLocalBookArtifacts([delId]);
+      if (supabaseClient) {
+        supabaseClient.from("books").delete().eq("biblio_id", delId).then(() => {});
+        removeBookFilesFromStorage(deletedBook);
+      }
+      showToast("Livre supprimé de la collection.", "success");
+      renderAllAdminViews();
+    };
+    if (row && !_adminReducedMotion.matches) {
+      row.classList.add("row-leave");
+      setTimeout(doDelete, 260);
+    } else {
+      doDelete();
     }
-    showToast("Livre supprimé de la collection.", "success");
-    renderAllAdminViews();
   }
   pendingDeleteId = null;
   document.getElementById("adminConfirmOverlay").hidden = true;
@@ -1338,8 +1416,9 @@ document.getElementById("adminConfirmOk")?.addEventListener("click", async () =>
    9) ÉDITEUR DE CONTENUS & CHAPITRES
    ------------------------------------------------------------------------- */
 function initContentEditor() {
+  const debouncedContentSearch = debounce((q) => renderContentBooksList(q), 250);
   document.getElementById("contentSearchInput")?.addEventListener("input", (e) => {
-    renderContentBooksList(e.target.value.trim().toLowerCase());
+    debouncedContentSearch(e.target.value.trim().toLowerCase());
   });
 
   document.getElementById("editorCloseBtn")?.addEventListener("click", () => {
@@ -1438,7 +1517,7 @@ function renderContentBooksList(query = "") {
     return;
   }
 
-  container.innerHTML = filtered.map(b => {
+  container.innerHTML = filtered.map((b, bi) => {
     const ct = b.contentType || "text";
     const hasC = ct === "pdf" ? !!(b.pdfData || b.pdfUrl) : ct === "images" ? !!(b.pages && b.pages.length) : !!(b.content && b.content.trim());
     const badgeLabel = ct === "pdf" ? "✓ PDF" : ct === "images" ? "✓ Images" : (hasC ? `✓ ${b.content.split(/^---/m).filter(s => s.trim()).length} ch.` : '⚠ Vide');
@@ -1447,7 +1526,7 @@ function renderContentBooksList(query = "") {
       : `<div class="admin-book-thumb" style="background:${colorForCategory(b.category)}">${escapeHTML((b.title || "").slice(0,2))}</div>`;
 
     return `
-      <div class="admin-book-item ${hasC ? 'has-content' : 'no-content'}" onclick="openContentEditor('${jsStr(b.id)}')">
+      <div class="admin-book-item ${hasC ? 'has-content' : 'no-content'}" style="--i:${bi}" onclick="openContentEditor('${jsStr(b.id)}')">
         ${thumb}
         <div class="admin-book-info">
           <h4>${escapeHTML(b.title)}</h4>
@@ -1705,7 +1784,12 @@ async function loadCloudUsers() {
     return;
   }
 
-  container.innerHTML = `<p class="empty-state">Chargement des utilisateurs...</p>`;
+  container.innerHTML = [0, 1, 2, 3].map(() => `
+    <div class="skeleton-row">
+      <div class="skeleton-thumb" style="width:38px;height:38px;border-radius:50%;"></div>
+      <div class="skeleton-line"></div>
+      <div class="skeleton-line short"></div>
+    </div>`).join("");
 
   const { data, error } = await supabaseClient.from("user_profiles").select("*").order("created_at", { ascending: false });
 
@@ -1851,6 +1935,28 @@ function initImportExport() {
 /* -------------------------------------------------------------------------
    13) TOAST & UTILITAIRES
    ------------------------------------------------------------------------- */
+// Compteur animé 0 → valeur (motion design commun avec la partie publique)
+const _adminReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+function animateAdminStatValue(el, target) {
+  if (_adminReducedMotion.matches || !target) { el.textContent = target; return; }
+  const t0 = performance.now(), dur = 750;
+  const tick = (t) => {
+    const p = Math.min(1, (t - t0) / dur);
+    el.textContent = Math.round(target * (1 - Math.pow(1 - p, 3)));
+    if (p < 1) requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+}
+function enhanceAdminStatCards(container) {
+  if (!container) return;
+  container.querySelectorAll(".stat-card").forEach((card, i) => {
+    card.style.setProperty("--i", i);
+    const v = card.querySelector(".stat-value");
+    const t = v ? parseInt(v.textContent, 10) : NaN;
+    if (!isNaN(t)) animateAdminStatValue(v, t);
+  });
+}
+
 function showToast(msg, type = "info") {
   const container = document.getElementById("toastContainer");
   if (!container) return;
@@ -1858,13 +1964,41 @@ function showToast(msg, type = "info") {
   toast.className = `toast ${type}`;
   toast.textContent = msg;
   container.appendChild(toast);
-  setTimeout(() => toast.remove(), 3200);
+  setTimeout(() => {
+    toast.classList.add("toast-out");
+    setTimeout(() => toast.remove(), 300);
+  }, 2900);
 }
 
 // Échappe une chaîne pour insertion dans un handler JS inline (onclick="fn('...')")
 function jsStr(s) {
   return String(s ?? "").replace(/\\/g, "\\\\").replace(/'/g, "\\'");
 }
+
+function debounce(fn, ms = 250) {
+  let t = null;
+  return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
+}
+
+// Modales : fermeture au clavier (Échap) et au clic sur l'overlay
+["adminEditOverlay", "adminConfirmOverlay", "duplicateModalOverlay"].forEach((id) => {
+  const ov = document.getElementById(id);
+  if (!ov) return;
+  ov.addEventListener("click", (e) => {
+    if (e.target !== ov) return;
+    const cancel = ov.querySelector("#adminEditCancel, #adminConfirmCancel, #dupCancelBtn");
+    if (cancel) cancel.click(); else ov.hidden = true;
+  });
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape") return;
+  ["adminEditOverlay", "adminConfirmOverlay", "duplicateModalOverlay"].forEach((id) => {
+    const ov = document.getElementById(id);
+    if (!ov || ov.hidden) return;
+    const cancel = ov.querySelector("#adminEditCancel, #adminConfirmCancel, #dupCancelBtn");
+    if (cancel) cancel.click(); else ov.hidden = true;
+  });
+});
 
 function escapeHTML(str) {
   return String(str || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");

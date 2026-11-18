@@ -82,6 +82,7 @@
       </div>
 
       <nav class="nav" id="adminNav">
+        <span class="nav-indicator" aria-hidden="true"></span>
         <button class="nav-btn active" data-view="dashboard">
           <span class="nav-ico">⌂</span> Tableau de bord
         </button>
@@ -122,7 +123,7 @@
 
       <!-- Bandeau supérieur -->
       <header class="topbar">
-        <div class="topbar-title">
+        <div class="topbar-title tt-anim">
           <h1 id="adminViewTitle">Tableau de bord Admin</h1>
           <p id="adminViewSubtitle">Vue d'ensemble et gestion de la bibliothèque</p>
         </div>
@@ -227,6 +228,7 @@
                   <div class="pdf-batch-bar"><div class="pdf-batch-fill" id="pdfBatchFill"></div></div>
                   <div class="pdf-batch-status muted" id="pdfBatchStatus"></div>
                 </div>
+                <div class="pdf-batch-cards" id="pdfBatchCards"></div>
                 <small class="hint">Chaque PDF devient un livre : métadonnées extraites via pdf.js, couverture = première page, fichier envoyé sur Supabase Storage. Catégorie par défaut : <b>Non classé</b>.</small>
               </div>
             </div>

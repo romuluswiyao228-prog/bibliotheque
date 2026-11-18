@@ -416,6 +416,7 @@ async function initCloudCatalog() {
   } finally {
     _catalogLoading = false;
     renderAll();
+    warmPdfReader(); // le catalogue cloud peut révéler des livres PDF absents du cache local
   }
 }
 
@@ -490,7 +491,19 @@ function switchView(viewName) {
   if (tt) { tt.classList.remove("tt-anim"); void tt.offsetWidth; tt.classList.add("tt-anim"); }
   updateNavIndicator();
 
-  renderAll();
+  // Rendu ciblé : seule la vue demandée est reconstruite (les autres restent dans le DOM)
+  renderQuickStats();
+  updateSidebarProfile();
+  const viewRenderers = {
+    dashboard: renderDashboard,
+    personal: renderPersonalView,
+    profile: renderProfileView,
+    list: renderListView,
+    borrow: renderBorrowView,
+    return: renderReturnView,
+    stats: renderStatsView
+  };
+  if (viewRenderers[viewName]) viewRenderers[viewName]();
 }
 
 document.getElementById("mainNav").addEventListener("click", (e) => {
@@ -768,6 +781,7 @@ const _pdfDocCache = new Map();
 const PDF_DOC_CACHE_MAX = 3;
 
 async function getPdfDocument(book) {
+  await ensurePdfLib();
   const key = book.id + "|" + (book.pdfUrl || "data");
   const hit = _pdfDocCache.get(key);
   if (hit) { hit.lastUsed = Date.now(); return hit.promise; }
@@ -961,7 +975,7 @@ async function renderPdfPage(pageNum) {
     updateProgressAndSave();
 
     // Précharge les 2 pages adjacentes et libère les pages éloignées de la mémoire
-    for (let d = -2; d <= 2; d++) {
+    for (let d = -1; d <= 2; d++) {
       const p = pageNum + d;
       if (p >= 1 && p <= _pdfDoc.numPages) _pdfDoc.getPage(p).catch(() => {});
     }
@@ -2037,11 +2051,56 @@ function renderStatsView() {
     : `<p class="empty-state">Aucune donnée à afficher pour le moment.</p>`;
 }
 
+/* Chargement à la demande des bibliothèques lourdes (exports + pdf.js) */
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    const el = document.createElement("script");
+    el.src = src;
+    el.onload = resolve;
+    el.onerror = () => reject(new Error("Chargement impossible : " + src));
+    document.head.appendChild(el);
+  });
+}
+const _libPromises = {};
+function ensureLib(key, urls) {
+  if (!_libPromises[key]) {
+    _libPromises[key] = Promise.all(urls.map(loadScript)).catch((e) => { delete _libPromises[key]; throw e; });
+  }
+  return _libPromises[key];
+}
+function ensureExportLibs() {
+  return ensureLib("exports", [
+    "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js",
+    "https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js",
+    "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"
+  ]);
+}
+function ensurePdfLib() {
+  return ensureLib("pdfjs", ["https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"]).then(() => {
+    if (window.pdfjsLib && !window.pdfjsLib.GlobalWorkerOptions.workerSrc) {
+      window.pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+    }
+  });
+}
+
+// Préchauffage : charge pdf.js + worker en arrière-plan dès qu'un livre PDF existe,
+// pour que la première ouverture de liseuse n'attende pas ~2 Mo de téléchargement.
+let _pdfWarmupStarted = false;
+function warmPdfReader() {
+  if (_pdfWarmupStarted) return;
+  if (!books.some(b => (b.contentType || "text") === "pdf")) return;
+  _pdfWarmupStarted = true;
+  ensurePdfLib().then(() => {
+    try { fetch("https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js").catch(() => {}); } catch (e) {}
+  }).catch(() => {});
+}
+
 /* ---------------------------------------------------------------------
    17) EXPORTS (PDF & Excel)
    --------------------------------------------------------------------- */
-document.getElementById("exportPdfBtn").addEventListener("click", () => {
+document.getElementById("exportPdfBtn").addEventListener("click", async () => {
   if (!books.length) { showToast("Aucun livre à exporter.", "error"); return; }
+  try { await ensureExportLibs(); } catch (e) { showToast("Impossible de charger la bibliothèque d'export.", "error"); return; }
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF();
 
@@ -2064,8 +2123,9 @@ document.getElementById("exportPdfBtn").addEventListener("click", () => {
   showToast("Export PDF généré.", "success");
 });
 
-document.getElementById("exportExcelBtn").addEventListener("click", () => {
+document.getElementById("exportExcelBtn").addEventListener("click", async () => {
   if (!books.length) { showToast("Aucun livre à exporter.", "error"); return; }
+  try { await ensureExportLibs(); } catch (e) { showToast("Impossible de charger la bibliothèque d'export.", "error"); return; }
 
   const data = books.map(b => ({
     ID: b.id,
@@ -2605,5 +2665,16 @@ window.addEventListener("resize", debounce(() => {
   if (mob !== _carousel.mobile) renderCarousel(true);
 }, 300));
 
+// Préchargement anticipé du PDF au survol de n'importe quelle carte livre
+// (le carrousel gère déjà son propre survol avec un délai de 200 ms)
+document.addEventListener("pointerover", (e) => {
+  const el = e.target.closest(".personal-book-card, .book-grid-card, .book-list-row, .profile-read-item, .profile-fav-card, .carousel-mini-card");
+  if (!el || !el.dataset.id) return;
+  const b = books.find(x => x.id === el.dataset.id);
+  if (b) prefetchBookPdf(b);
+});
+
 // Catalogue cloud : démarre après le premier rendu (cache + refresh arrière-plan)
 if (isSupabaseConfigured()) initCloudCatalog();
+else warmPdfReader();
+setTimeout(warmPdfReader, 1500); // secours si le catalogue cloud tarde

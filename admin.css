@@ -1213,3 +1213,164 @@
 .pdf-drop-text span { font-size: 13px; color: var(--color-text-muted, #746B5C); display: block; margin-bottom: 8px; }
 .pdf-drop-text small { font-size: 12px; color: #A09689; display: block; }
 .admin-pdf-drop-zone .btn { margin-top: 14px; }
+
+/* =========================================================================
+   MOTION DESIGN ADMIN — même langage que la partie publique
+   ========================================================================= */
+
+/* Changement de vue : fondu + léger glissement (remplace fadeIn simple) */
+.admin-view.active { animation: adminViewIn 0.32s cubic-bezier(0.22, 0.8, 0.3, 1) both; }
+@keyframes adminViewIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Zone d'import PDF : pointillés animés + icône qui monte */
+.admin-pdf-drop-zone {
+  border-style: dashed;
+  transition: border-color 0.25s ease, background 0.25s ease, transform 0.25s ease, box-shadow 0.25s ease;
+}
+.admin-pdf-drop-zone:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(31, 58, 52, 0.08);
+}
+.admin-pdf-drop-zone.drag-over {
+  border-color: var(--color-accent, #B8874A);
+  background: #FBF5EC;
+  transform: translateY(-2px) scale(1.005);
+  box-shadow: 0 10px 30px rgba(184, 135, 74, 0.15);
+}
+.pdf-drop-icon {
+  transition: transform 0.3s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+}
+.admin-pdf-drop-zone:hover .pdf-drop-icon,
+.admin-pdf-drop-zone.drag-over .pdf-drop-icon {
+  transform: translateY(-6px) scale(1.08);
+}
+
+/* Cartes de progression par fichier PDF */
+.pdf-batch-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 14px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+.pdf-batch-card {
+  background: var(--color-surface, #FFF);
+  border: 1px solid var(--color-border, #E6DFCC);
+  border-radius: 12px;
+  padding: 10px 14px;
+  animation: cardIn 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+  animation-delay: calc(var(--i, 0) * 70ms);
+  transition: border-color 0.25s ease, box-shadow 0.25s ease;
+}
+.pdf-batch-card.is-active { border-color: var(--color-accent, #B8874A); box-shadow: 0 4px 14px rgba(184,135,74,0.12); }
+.pdf-batch-card.is-done { border-color: #3E7C4F; }
+.pdf-batch-card.is-error { border-color: var(--color-danger, #B0413E); }
+.pdf-batch-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 7px;
+}
+.pdf-batch-card-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text, #241F19);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pdf-batch-card-state { font-size: 14px; flex-shrink: 0; }
+.pdf-batch-card.is-done .pdf-batch-card-state { color: #3E7C4F; }
+.pdf-batch-card.is-error .pdf-batch-card-state { color: var(--color-danger, #B0413E); }
+.pdf-batch-card-bar {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--color-border, #E6DFCC);
+  overflow: hidden;
+}
+.pdf-batch-card-fill {
+  height: 100%;
+  width: 0%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--color-primary, #1F3A34), var(--color-accent, #B8874A));
+  transition: width 0.45s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.pdf-batch-card.is-done .pdf-batch-card-fill { background: #3E7C4F; }
+.pdf-batch-card.is-error .pdf-batch-card-fill { background: var(--color-danger, #B0413E); }
+.pdf-batch-card-step { font-size: 12px; margin-top: 6px; min-height: 15px; }
+
+/* Tableau admin : surbrillance du nouveau livre + sortie animée à la suppression */
+.book-table tbody tr.row-highlight td { animation: rowFlash 1.6s ease; }
+@keyframes rowFlash {
+  0% { background: rgba(184, 135, 74, 0.28); }
+  100% { background: transparent; }
+}
+.book-table tbody tr.row-leave {
+  animation: rowLeave 0.26s ease forwards;
+}
+@keyframes rowLeave {
+  to { opacity: 0; transform: translateX(24px); }
+}
+.book-table tbody tr img { transition: transform 0.25s ease; }
+.book-table tbody tr:hover img { transform: scale(1.12); }
+
+/* Liste des livres (éditeur de contenus) : cascade */
+.admin-book-item {
+  animation: cardIn 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+  animation-delay: calc(var(--i, 0) * 40ms);
+}
+
+/* Modale doublons : même entrée que les autres modales */
+.duplicate-modal-overlay { animation: overlayIn 0.22s ease both; }
+.duplicate-modal { animation: modalIn 0.32s cubic-bezier(0.2, 0.9, 0.3, 1.12) both; }
+
+/* Toasts admin : sortie animée */
+.toast.toast-out { animation: toastOut 0.28s ease forwards; }
+
+/* Focus clavier visible sur les éléments interactifs admin */
+.admin-body button:focus-visible,
+.admin-body a:focus-visible,
+.admin-body input:focus-visible,
+.admin-body select:focus-visible,
+.admin-body textarea:focus-visible {
+  outline: 2px solid var(--color-accent, #B8874A);
+  outline-offset: 2px;
+}
+
+/* =========================================================================
+   ACCESSIBILITÉ — prefers-reduced-motion (admin)
+   ========================================================================= */
+@media (prefers-reduced-motion: reduce) {
+  .admin-view.active,
+  .pdf-batch-card,
+  .admin-book-item,
+  .book-table tbody tr.row-highlight td,
+  .duplicate-modal-overlay,
+  .duplicate-modal,
+  .toast.toast-out {
+    animation: none !important;
+  }
+  .admin-pdf-drop-zone, .admin-pdf-drop-zone:hover, .admin-pdf-drop-zone.drag-over,
+  .pdf-drop-icon, .pdf-batch-card-fill, .book-table tbody tr img {
+    transition: none !important;
+    transform: none !important;
+  }
+}
+
+/* Coche de succès : petit pop sur l'état final des cartes d'import */
+.pdf-batch-card-state { transition: transform 0.2s ease; }
+.pdf-batch-card.is-done .pdf-batch-card-state,
+.pdf-batch-card.is-error .pdf-batch-card-state { animation: checkPop 0.35s cubic-bezier(0.2, 0.9, 0.3, 1.4); }
+@keyframes checkPop {
+  0% { transform: scale(0.4); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pdf-batch-card.is-done .pdf-batch-card-state,
+  .pdf-batch-card.is-error .pdf-batch-card-state { animation: none !important; }
+}
